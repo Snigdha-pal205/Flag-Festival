@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#5a4130">
+  <!-- open full screen (no browser bar) when added to the home screen -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Flag Festival">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <title>Flag Festival</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Lilita+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="wrap">
+    <svg id="stage" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="rotate" aria-hidden="true">
+    <div class="rotate-card">
+      <svg viewBox="0 0 200 160" width="200" height="160">
+        <g class="rot-phone">
+          <rect x="70" y="30" width="60" height="100" rx="10" fill="#f4ebdd" stroke="#3b2a20" stroke-width="5"/>
+          <circle cx="100" cy="118" r="5" fill="#3b2a20"/>
+        </g>
+        <path d="M150 40 q24 30 4 64" fill="none" stroke="#c8442f" stroke-width="6" stroke-linecap="round"/>
+        <path d="M146 98 l10 10 l6 -14" fill="none" stroke="#c8442f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <p>Please turn your tablet sideways</p>
+    </div>
+  </div>
+
+  <!-- Content first (all countries, flags, friends, lines), then engine, 3D, games, app -->
+  <script src="js/content.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/vendor/three.min.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/geo.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/flags.js"></script>
+  <script src="js/three/core3d.js"></script>
+  <script src="js/three/flags3d.js"></script>
+  <script src="js/three/chars3d.js"></script>
+  <script src="js/three/map3d.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/games/base.js"></script>
+  <script src="js/games/mapcolour.js"></script>
+  <script src="js/games/jigsaw.js"></script>
+  <script src="js/games/catch.js"></script>
+  <script src="js/games/build.js"></script>
+  <script src="js/games/quiz.js"></script>
+  <script src="js/scenes.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
