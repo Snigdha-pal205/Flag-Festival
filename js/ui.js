@@ -256,10 +256,21 @@
       const my = ++this.token;
       this.clearBubble();
       if (!o.noBubble) {
-        const b = H.bubble(this.bubbleLayer, text, { size: o.size || 28, maxChars: o.maxChars || 24, tail: this.x < 640 ? 'left' : 'right' });
-        let bx = this.x < 640 ? this.x + 20 * this.s : this.x - 20 * this.s - b._w;
-        let by = this.y - 128 * this.s - b._h - 10;
-        bx = FF.clamp(bx, 12, FF.W - b._w - 12); by = FF.clamp(by, 96, FF.H - b._h - 34);
+        const size = o.size || 28;
+        // Each screen can give Pip a "free spot" for the bubble ({x, y | bottom, w, tail}),
+        // chosen so the words never cover the friend, the flag, the map, pieces or paint.
+        const sp = this.spot;
+        const maxChars = sp ? Math.max(12, Math.floor((sp.w - 52) / (size * 0.56))) : (o.maxChars || 24);
+        const b = H.bubble(this.bubbleLayer, text, { size, maxChars, tail: sp ? (sp.tail || 'left') : (this.x < 640 ? 'left' : 'right') });
+        let bx, by;
+        if (sp) {
+          bx = sp.tail === 'right' ? sp.x + sp.w - b._w : sp.x;
+          by = sp.bottom !== undefined ? sp.bottom - b._h - 30 : sp.y;
+        } else {
+          bx = this.x < 640 ? this.x + 20 * this.s : this.x - 20 * this.s - b._w;
+          by = this.y - 128 * this.s - b._h - 10;
+        }
+        bx = FF.clamp(bx, 12 - FF.OX, FF.W + FF.OX - b._w - 12); by = FF.clamp(by, 84, FF.H - b._h - 34);
         b.setAttribute('transform', `translate(${bx.toFixed(1)} ${by.toFixed(1)})`);
         this.bubble = b;
       }

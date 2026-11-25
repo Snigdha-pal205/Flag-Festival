@@ -9,6 +9,15 @@
 
   const app = FF.app = {};
 
+  /* ---------- two map sets: North Africa and South Asia ----------
+     Each PLAY uses one set (they take turns); the friends' flags always come from that set. */
+  FF.C.africaCountries = FF.C.countries;
+  FF.useRegion = function (id) {
+    FF.region = id === 'asia' ? 'asia' : 'africa';
+    FF.geo = FF.geoSets[FF.region];
+    FF.C.countries = FF.region === 'asia' ? FF.C.asiaCountries : FF.C.africaCountries;
+  };
+
   /* ---------- storage (wrapped: private windows may block it) ---------- */
   function blankProfile(id) { return { id, day: 0, lastDate: null, seenIntro: false, flags: {}, plays: {}, announced: {} }; }
   function load() {
@@ -30,7 +39,7 @@
 
   /* ---------- scene switching ---------- */
   app.go = function (scene, wipe) {
-    const doIt = () => { FF.pip.clearBubble(); FF.audio.stopVoice(); FF.show(scene); };
+    const doIt = () => { FF.pip.clearBubble(); FF.pip.spot = null; FF.audio.stopVoice(); FF.show(scene); };   // each screen sets its own bubble spot
     if (wipe === false || !FF.current) doIt();
     else FF.ui.wipe(doIt);
     return scene;
@@ -38,6 +47,7 @@
   app.home = function () {
     app.token++;
     FF.ui.showTop(false);
+    if (FF.friends) FF.friends.strip.hide();
     app.go(new FF.scenes.Title());
   };
   /* no "Who is playing?" page: PLAY goes straight into the game with one saved progress */
@@ -107,50 +117,113 @@
     return new Promise(resolve => { app.go(new Cls(Object.assign({}, args, { done: resolve }))); });
   }
 
-  /* ---------- the game flow ----------
-     PLAY → for one flag at a time:
-       1 Map + Colour: put the missing country back → the flag says "Good job!" →
-         Grumble washes the colour off → colour the flag again
-       2–4 Flag Jigsaw, Catch the Flag, Build a Flag in a random order — all with the SAME flag
-       5   Which flag? — pick the right flag from three, no help (revision)
-     then the next flag, straight on — no time limit, no "come back tomorrow".
-     When every flag is done, the parade plays and everyone celebrates. */
+  /* ---------- the story flow (two friends lost their real flags) ----------
+     TEAM_SIZE friends — 2, so it stays simple for young children.
+     PLAY →
+       1 opening parade: Ellie, Andy and Donny march with "?" flags; Pip asks for help
+       2 the map with the countries of their flags missing — put them all back
+       3 game steps (Colour, Build, Jigsaw, Catch × each flag) in a random order where
+         the same flag and the same game never come twice in a row
+       4 straight after a friend's 4th game: "Choose the right flag" — the "?" becomes the real flag
+       5 final parade with the real flags
+     Nothing locks; every step can always be finished. */
+  const STORY_GAMES = ['colour', 'build', 'jigsaw', 'catch'];
+  const TEAM_SIZE = 2;
+  const GAME_CLASS = { colour: 'paint', build: 'build', jigsaw: 'jigsaw', catch: 'catch' };
+
+  /* every flag × every game, in a random order: never the same flag or game twice in a row.
+     Random order first (shuffle again until it fits); a random search guarantees an answer. */
+  app.makeOrder = function (flags, games) {
+    const all = [];
+    flags.forEach(f => games.forEach(g => all.push({ flag: f, game: g })));
+    const ok = list => list.every((s, i) => i === 0 || (s.flag !== list[i - 1].flag && s.game !== list[i - 1].game));
+    for (let i = 0; i < 400; i++) { const o = FF.shuffle(all.slice()); if (ok(o)) return o; }
+    const out = [];
+    const dfs = pool => {
+      if (!pool.length) return true;
+      const last = out[out.length - 1];
+      for (const c of FF.shuffle(pool.filter(s => !last || (s.flag !== last.flag && s.game !== last.game)))) {
+        out.push(c);
+        if (dfs(pool.filter(x => x !== c))) return true;
+        out.pop();
+      }
+      return false;
+    };
+    dfs(all);
+    return out;
+  };
+
   app.runSession = async function () {
     const tok = ++app.token;
     const p = app.profile;
     p.lastDate = today();
     app.save();
     FF.audio.music('festival');
-    // ALL 7 countries, in a new random order every time PLAY is tapped.
-    // The last 3 countries played go to the back, so a new game never starts with one you just had.
+    await Promise.all([FF.friends.preload(), FF.flags.preloadPictures()]);   // friends + flag artwork (Bhutan's dragon) ready first
+    if (tok !== app.token) return;
+    // this time's map set: North Africa and South Asia take turns
+    const region = p.lastRegion === 'africa' ? 'asia' : p.lastRegion === 'asia' ? 'africa' : FF.pick(['africa', 'asia']);
+    p.lastRegion = region;
+    FF.useRegion(region);
+    // the friends' countries, new ones first (the ones from last time go to the back)
     const recent = (p.recent || []).slice(-3);
-    const fresh = FF.shuffle(FF.C.countries.map(c => c.id).filter(id => !recent.includes(id)));
-    const order = fresh.concat(FF.shuffle(recent.filter(id => FF.C.countries.some(c => c.id === id))));
+    const ids = FF.C.countries.map(c => c.id);
+    const pickIds = FF.shuffle(ids.filter(id => !recent.includes(id))).concat(FF.shuffle(recent.filter(id => ids.includes(id)))).slice(0, TEAM_SIZE);
+    p.recent = pickIds.slice();
+    app.save();
+    const team = FF.friends.makeTeam(pickIds);
+    await FF.friends.warm(team);                 // every friend picture ready BEFORE the parade starts
+    if (tok !== app.token) return;
+    FF.ui.buntingG.innerHTML = ''; FF.ui.slotPos = [];   // the friends strip replaces the bunting
     app.surprise.start();
-    for (let fi = 0; fi < order.length; fi++) {
-      const id = order[fi];
-      p.lastFlag = id;
-      p.recent = (p.recent || []).filter(x => x !== id).concat([id]).slice(-3);
+
+    // 1 opening parade
+    FF.ui.showTop(false);
+    await runScene(FF.story.FriendParade, { final: false });
+    if (tok !== app.token) return;
+
+    // 2 the map with the friends' countries missing
+    FF.ui.showTop(true);
+    FF.friends.strip.show();
+    FF.friends.strip.focus(-1);
+    await runScene(FF.games.map3, { country: team[0].country, countries: team.map(m => m.country), level: levelFor(p, team[0].country.id, 'map'), learned: learnedList(p) });
+    if (tok !== app.token) return;
+    team.forEach(m => { p.flags[m.country.id] = Object.assign({}, p.flags[m.country.id], { learned: true }); });
+    app.save();
+
+    // 3 + 4 the game steps (4 per friend), each friend's flag reveal straight after its 4th game
+    const order = app.makeOrder(team.map(m => m.country.id), STORY_GAMES);
+    app.lastOrder = order;
+    for (const step of order) {
+      if (tok !== app.token) return;
+      const m = team.find(t => t.country.id === step.flag);
+      await runScene(FF.story.StepIntro, { member: m, game: step.game });
+      if (tok !== app.token) return;
+      const key = GAME_CLASS[step.game];
+      FF.ui.showTop(true);
+      FF.friends.strip.show();
+      FF.friends.strip.focus(m.i);
+      await runScene(FF.games[key], { country: m.country, level: levelFor(p, m.country.id, key), learned: learnedList(p) });
+      if (tok !== app.token) return;
+      p.plays[m.country.id] = p.plays[m.country.id] || {};
+      p.plays[m.country.id][key] = (p.plays[m.country.id][key] || 0) + 1;
+      m.games++;
       app.save();
-      const country = FF.C.countries.find(c => c.id === id);
-      const steps = ['map'].concat(FF.shuffle(['jigsaw', 'catch', 'build']), ['quiz']);   // the quiz is always last
-      FF.ui.setBunting(steps.length, []);
-      for (const game of steps) {
+      const ii = m.i;
+      setTimeout(() => FF.friends.strip.refresh(ii, true), 900);   // the friend gets livelier (seen in the next step)
+      if (m.games === STORY_GAMES.length && !m.revealed) {
+        await runScene(FF.story.Reveal, { member: m });
         if (tok !== app.token) return;
-        FF.ui.showTop(true);
-        await runScene(FF.games[game], { country, level: levelFor(p, id, game), learned: learnedList(p) });
-        if (tok !== app.token) return;
-        p.plays[id] = p.plays[id] || {};
-        p.plays[id][game] = (p.plays[id][game] || 0) + 1;
-        if (game === 'map') p.flags[id] = Object.assign({}, p.flags[id], { learned: true });
+        p.flags[m.country.id] = Object.assign({}, p.flags[m.country.id], { learned: true, done: true });
         app.save();
-        FF.ui.addPennant(country.flag);
       }
-      p.flags[id] = Object.assign({}, p.flags[id], { learned: true, done: true });
-      app.save();
     }
     app.surprise.stop();
-    await app.paradeAndGoodbye(tok);
+
+    // 5 the final parade with the real flags
+    FF.friends.strip.hide();
+    FF.ui.showTop(false);
+    app.go(new FF.story.FriendParade({ final: true }));
   };
   app.paradeAndGoodbye = async function (tok) {
     const p = app.profile;
@@ -212,6 +285,7 @@
     FF.art.initDefs();
     FF.three.init();
     FF.three.preloadBg(['title.jpg', 'ocean.jpg', 'festival.jpg']);
+    FF.friends.preload();
     FF.three.chars.preload();
     FF.ui.init();
     FF.pip.init();

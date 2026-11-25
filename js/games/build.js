@@ -37,6 +37,7 @@
       this.makeFriend(w, -5.6, -3.4, -0.4, 2.2);
       this.friend.turn(0.45);
       FF.pip.show(1206, 708, 1.0);
+      FF.pip.spot = { x: 880, y: 345, w: 388, tail: 'right' };   // between the "Copy this flag" card and the tray
 
       // the tray
       const tz = w.atY(640, 672, -3.4).z;          // the tray sits on the grass, near the bottom of the screen
@@ -48,7 +49,7 @@
       F3.B(w.scene, br.x - tl.x + 0.8, 0.22, 0.14, F3.toy('#8a5a32'), (tl.x + br.x) / 2, trayY + 0.06, tz + 0.5);
 
       let list = fd.parts.map((p, idx) => ({ part: p, idx, real: true }));
-      if (this.level === 'hard') list = list.concat(this.distractors());
+      list = list.concat(this.distractors());           // always 3 extra pieces, none a copy
       list = FF.shuffle(list);
       const n = list.length;
       const rowsN = n > 5 ? 2 : 1, perRow = Math.ceil(n / rowsN);
@@ -111,22 +112,39 @@
         this.hints.stopped = false; this.hints.reset();
       })();
     }
+    /* Every level: THREE extra pieces that are NOT on this flag, to think about.
+       None of them copies a real piece, and no two extras are alike:
+       · a stripe in a colour the flag doesn't have
+       · two different shapes (preferably shapes the flag doesn't have), each in its own
+         colour the flag doesn't have. */
     distractors() {
       const fd = this.fd;
       const cols = FF.flags.colours(this.flagId);
-      const wrongC = ['blue', 'green', 'yellow', 'orange', 'pink', 'purple'].filter(c => !cols.includes(c));
-      const c1 = wrongC[0], c2 = wrongC[1] || 'pink';
+      const wrongC = FF.shuffle(['blue', 'green', 'yellow', 'orange', 'pink', 'purple', 'red', 'black'].filter(c => !cols.includes(c) && FF.C.paints[c]));
+      while (wrongC.length < 3) wrongC.push(['purple', 'pink', 'blue'][wrongC.length]);
+      const [c1, c2, c3] = wrongC;
       const stripe = fd.parts.find(p => p.stripe) || fd.parts[0];
-      const star = fd.parts.find(p => p.shape.t === 'star');
-      const d1 = { id: 'x1', label: c1 + ' stripe', colour: c1, hex: FF.C.paints[c1], shape: Object.assign({}, stripe.shape) };
-      const d2 = star
-        ? { id: 'x2', label: 'extra star', colour: star.colour, hex: star.hex, shape: Object.assign({}, star.shape, { cx: fd.w * 0.2, cy: fd.h * 0.25 }) }
-        : { id: 'x2', label: c2 + ' star', colour: c2, hex: FF.C.paints[c2], shape: { t: 'star', cx: fd.w * 0.5, cy: fd.h * 0.5, R: 24, rot: -90 } };
-      return [{ part: d1, real: false }, { part: d2, real: false }];
+      const extras = [{ id: 'x1', label: c1 + ' stripe', colour: c1, hex: FF.C.paints[c1], shape: Object.assign({}, stripe.shape) }];
+      const has = t => fd.parts.some(p => p.shape.t === t);
+      const W = fd.w, H = fd.h;
+      const shapes = [
+        { t: 'circle', label: 'circle', shape: { t: 'circle', cx: W * 0.5, cy: H * 0.5, r: 30 } },
+        { t: 'star', label: 'star', shape: { t: 'star', cx: W * 0.5, cy: H * 0.5, R: 30, rot: -90 } },
+        { t: 'crescent', label: 'crescent', shape: { t: 'crescent', cx: W * 0.5, cy: H * 0.5, R: 32, d: 9, r: 26, rot: 0 } },
+        { t: 'poly', label: 'triangle', shape: { t: 'poly', pts: [[0, 0], [W * 0.4, H * 0.5], [0, H]] } },
+        { t: 'diamond', label: 'diamond', shape: { t: 'poly', pts: [[W * 0.5, H * 0.3], [W * 0.62, H * 0.5], [W * 0.5, H * 0.7], [W * 0.38, H * 0.5]] } }
+      ];
+      // shapes the flag doesn't have come first; two DIFFERENT shapes, two different colours
+      const order = FF.shuffle(shapes.filter(sh => !has(sh.t))).concat(FF.shuffle(shapes.filter(sh => has(sh.t))));
+      [order[0], order[1]].forEach((sh, k) => {
+        const c = k === 0 ? c2 : c3;
+        extras.push({ id: 'x' + (k + 2), label: c + ' ' + sh.label, colour: c, hex: FF.C.paints[c], shape: sh.shape });
+      });
+      return extras.map(part => ({ part, real: false }));
     }
     nextPart() { return this.parts.find(P => P.real && !P.placed && (P.part.needs || []).every(id => this.placed.has(id))); }
     outlinePts(sh) {
-      if (sh.t === 'eagle') { const b = FF.flags.shapeBox(sh); return [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]].map(p => new T.Vector2(p[0], this.fd.h - p[1])); }
+      if (sh.t === 'eagle' || sh.t === 'emblem' || sh.t === 'picture') { const b = FF.flags.shapeBox(sh); return [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]].map(p => new T.Vector2(p[0], this.fd.h - p[1])); }
       return F3.flags.shape(sh, this.fd.h).getPoints(16);
     }
     showGuides() {

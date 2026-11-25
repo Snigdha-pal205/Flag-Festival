@@ -59,6 +59,15 @@ window.FF = window.FF || {};
   };
   FF.rand = (a, b) => a + Math.random() * (b - a);
   FF.pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  /* is point (x, y) inside the polygon pts [[x, y], ...]? (used when a child taps the map) */
+  FF.inPoly = function (x, y, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+      if (((yi > y) !== (yj > y)) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
   FF.shuffle = function (arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }

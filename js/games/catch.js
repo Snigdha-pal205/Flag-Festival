@@ -145,6 +145,7 @@
       this.windLayer = FF.el('g', { class: 'no-hit' }, this.layer.top);
 
       FF.pip.show(80, 706, 0.95);
+      FF.pip.spot = { x: 24, y: 226, w: 320, tail: 'left' };     // under the flag panel, away from the falling flags
       this.input({
         down: p => { this.tx = w.atZ(p.x, p.y, Z).x; return true; },
         move: p => { this.tx = w.atZ(p.x, p.y, Z).x; },

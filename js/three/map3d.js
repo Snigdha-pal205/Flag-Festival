@@ -6,7 +6,15 @@
   const F3 = FF.three;
   const M = F3.mapkit = {};
   const GEO = () => FF.geo;
-  M.COL = { algeria: '#ffb000', tunisia: '#1fbf3f', libya: '#ff5a1f', egypt: '#ffe100', sudan: '#ff3f8e', chad: '#1e90ff', niger: '#8f3fe0' };
+  M.COL = { algeria: '#ffb000', tunisia: '#1fbf3f', libya: '#ff5a1f', egypt: '#ffe100', sudan: '#ff3f8e', chad: '#1e90ff', niger: '#8f3fe0',
+    afghanistan: '#8f3fe0', pakistan: '#1fbf3f', india: '#ff8a1f', nepal: '#1e90ff', bhutan: '#ffe100', bangladesh: '#ff3f8e', china: '#ff4b3a' };
+  /* the glowing "?" flag picture (assets/bg/mystery-flag.png), loaded once */
+  let mysteryTex = null;
+  M.mysteryTex = function () {
+    if (!mysteryTex) { mysteryTex = new T.TextureLoader().load('assets/bg/mystery-flag.png'); mysteryTex.colorSpace = T.SRGBColorSpace; mysteryTex.userData.keep = true; }
+    return mysteryTex;
+  };
+  M.MYSTERY_ASPECT = 900 / 674;
   const DEPTH = 22;
 
   function shapeFrom(pts, clamp) {
@@ -92,53 +100,54 @@
     const mapG = F3.group(root, ox, 0, oz); mapG.scale.setScalar(k);
     // other lands, lower and pale
     Object.keys(G.other).forEach(key => { mapG.add(extrude(shapeFrom(parseD(G.other[key]), true), 9, M.mat('#efe6cf'))); });
+    // o.missing: one country id, or a list of them (the 3-friend story uses three empty slots)
+    const missing = [].concat(o.missing || []);
     const nodes = {};
-    Object.keys(G.countries).forEach(id => { if (id !== o.missing) { nodes[id] = M.country(id); mapG.add(nodes[id]); } });
-    // the empty slot
-    let slot = null;
-    if (o.missing) {
-      const c = G.countries[o.missing];
-      slot = F3.group(mapG);
+    Object.keys(G.countries).forEach(id => { if (!missing.includes(id)) { nodes[id] = M.country(id); mapG.add(nodes[id]); } });
+    // the empty slots
+    const slots = {};
+    missing.forEach(mid => {
+      const c = G.countries[mid];
+      const slot = F3.group(mapG);
       const floor = extrude(shapeFrom(c.pts), 17, M.mat('#243a73'), false);
       slot.add(floor);
       const curve = new T.CatmullRomCurve3(c.pts.filter((p, i) => i % 2 === 0).map(p => new T.Vector3(p[0], 19, p[1])), true);
       const gm = F3.ownMat(new T.MeshBasicMaterial({ color: '#ffe100' }));
-      const ring = new T.Mesh(new T.TubeGeometry(curve, 300, 6.5, 8, true), gm);
+      // the yellow ring: thinner around small countries, so their shape stays easy to see
+      const tubeR = FF.clamp(Math.min(c.bbox.w, c.bbox.h) * 0.08, 1.6, 6.5);
+      const ring = new T.Mesh(new T.TubeGeometry(curve, 300, tubeR, 8, true), gm);
       slot.add(ring);
       slot.userData.glowMat = gm;
       slot.userData.setGlow = () => {};
-      // a big bouncing "?" over the hole
-      const q = F3.label('?', { height: 1.5, size: 160, color: '#ffffff', outlineColor: '#243a73' });
-      root.add(q);
-      const lab = FF.C.countries.find(cn => cn.id === o.missing); const lp = lab ? G.P(lab.label[0], lab.label[1]) : [c.cx, c.cy];
-      const qc = new T.Vector3(ox + lp[0] * k, 0, oz + lp[1] * k);
+      // nothing floats over the hole: just the dark slot and its pulsing yellow ring
+      const ph = Object.keys(slots).length * 1.3;
       w.onUpdate((dt, t) => {
-        const pulse = 0.5 + 0.5 * Math.sin(t * 6);
-        gm.color.setRGB(1, 0.75 + pulse * 0.25, pulse * 0.4);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 6 + ph);
+        gm.color.setRGB(1, 0.78 + pulse * 0.17, pulse * 0.15);
         ring.scale.y = 1 + pulse * 0.4;
-        q.visible = !!slot.parent;
-        q.position.set(qc.x, 0.5 + Math.abs(Math.sin(t * 3)) * 0.3, qc.z + 0.75);
       });
-    }
+      slots[mid] = slot;
+    });
+    const slot = missing.length ? slots[missing[0]] : null;
     // labels
     const labels = {};
     if (o.labels !== false) {
       FF.C.countries.forEach(cn => {
-        if (cn.id === o.missing) return;
+        if (missing.includes(cn.id)) return;
         labels[cn.id] = M.label(root, cn, ox, oz, k);
       });
     }
     const api = {
-      root, mapG, k, ox, oz, nodes, slot, labels,
+      root, mapG, k, ox, oz, nodes, slot, slots, labels,
       toWorld(px, py, y) { return new T.Vector3(ox + px * k, y || 0, oz + py * k); },
       center(id) { const c = G.countries[id]; return api.toWorld(c.cx, c.cy, 0); },
-      fill(id) { nodes[id] = M.country(id); mapG.add(nodes[id]); if (slot) { mapG.remove(slot); } if (o.labels !== false) labels[id] = M.label(root, FF.C.countries.find(c => c.id === id), ox, oz, k); return nodes[id]; }
+      fill(id) { nodes[id] = M.country(id); mapG.add(nodes[id]); if (slots[id]) { mapG.remove(slots[id]); delete slots[id]; } if (o.labels !== false) labels[id] = M.label(root, FF.C.countries.find(c => c.id === id), ox, oz, k); return nodes[id]; }
     };
     return api;
   };
   M.label = function (root, cn, ox, oz, k) {
     const p = GEO().P(cn.label[0], cn.label[1]);
-    const sp = F3.label(cn.name, { height: cn.id === 'tunisia' ? 0.26 : 0.34, size: 72, color: '#3b2a20' });
+    const sp = F3.label(cn.name, { height: cn.labelSize || (cn.id === 'tunisia' ? 0.26 : 0.34), size: 72, color: '#3b2a20' });
     sp.position.set(ox + p[0] * k, 0.75, oz + p[1] * k);
     root.add(sp);
     return sp;

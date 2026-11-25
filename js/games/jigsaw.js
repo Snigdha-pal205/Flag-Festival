@@ -1,5 +1,5 @@
 /* Game 2 — Flag Jigsaw (3D): Grumble's wind tore the flag; fit the chunky glossy pieces
-   back into the wooden frame. Cut in a grid (2×1, then 2×2), never along the stripes.
+   back into the wooden frame. Always cut 2 × 2 (4 pieces), never along the stripes.
    Never more than 4 pieces, and no extra pieces from other flags — it must stay easy.  */
 (function (FF) {
   'use strict';
@@ -11,7 +11,7 @@
       FF.audio.music('calm');
       const w = this.setWorld(FF.frontWorld({ ground: { stageX: 7, stageZ: -18 } }));
       const fd = this.fd;
-      const grid = { easy: [2, 1], normal: [2, 2], hard: [2, 2] }[this.level];   // at most 4 pieces
+      const grid = [2, 2];   // always 4 pieces (a 2 × 2 cut) — a little challenge, never more
       const H = Math.min(3.1, 4.8 * fd.h / fd.w), W = H * fd.w / fd.h;
       const s = this.s = W / fd.w;
       const cx = -1.25, cy = -0.1;
@@ -39,7 +39,8 @@
 
       this.makeFriend(w, -5.3, -3.4, -0.4, 2.1);
       this.friend.turn(0.4);
-      FF.pip.show(80, 706, 0.95);   // bottom-left: his speech bubble never covers the pieces tray
+      FF.pip.show(80, 706, 0.95);
+      FF.pip.spot = { x: 150, bottom: 742, w: 420, tail: 'left' };   // under the frame, beside Pip — never on the pieces
 
       // a glossy board on the right where the pieces wait
       const z = 0.7;

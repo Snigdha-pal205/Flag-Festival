@@ -44,6 +44,48 @@
       <circle cx="-3" cy="-25" r="1.4" fill="${dk}"/>
     </g>`;
   };
+  /* Picture emblems drawn as one sticker (like Egypt's eagle), simplified for small children:
+     Afghanistan's emblem. Unit drawings centred on 0,0. (Bhutan's dragon is real artwork: 'picture')
+     shape: { t: 'emblem', kind, cx, cy, s } */
+  F.EMBLEMS = {
+    afghan: {
+      w: 80, h: 80,
+      paths: [
+        'M0 -37 A37 37 0 1 1 -0.01 -37 Z M0 -28 A28 28 0 1 0 0.01 -28 Z',
+        'M-13 14 L-13 0 Q0 -16 13 0 L13 14 Z',
+        'M-20 14 L-20 -6 L-17.5 -12 L-15 -6 L-15 14 Z', 'M15 14 L15 -6 L17.5 -12 L20 -6 L20 14 Z',
+        'M-24 14 L24 14 L24 19 L-24 19 Z',
+        'M-15 25 Q0 31 15 25 L15 30 Q0 36 -15 30 Z'
+      ],
+      dots: [],
+      lines: (() => { let d = 'M-4 14 L-4 7 Q0 3 4 7 L4 14 '; for (let a = -150; a <= 150; a += 20) { const r = a * Math.PI / 180; d += `M${(Math.sin(r) * 28.5).toFixed(1)} ${(-Math.cos(r) * 28.5).toFixed(1)} L${(Math.sin(r + 0.12) * 36).toFixed(1)} ${(-Math.cos(r + 0.12) * 36).toFixed(1)} `; } return d; })()
+    }
+  };
+  F.emblemMarkup = function (sh, fill) {
+    const E = F.EMBLEMS[sh.kind]; if (!E) return '';
+    const dk = 'rgba(0,0,0,.35)';
+    return `<g transform="translate(${sh.cx} ${sh.cy}) scale(${sh.s})">` +
+      E.paths.map(d => `<path d="${d}" fill="${fill}" stroke="${dk}" stroke-width="1.6" stroke-linejoin="round"/>`).join('') +
+      E.dots.map(c => `<circle cx="${c[0]}" cy="${c[1]}" r="${c[2]}" fill="${fill}" stroke="${dk}" stroke-width="1.6"/>`).join('') +
+      `<path d="${E.lines}" fill="none" stroke="${dk}" stroke-width="1.4" stroke-linecap="round"/></g>`;
+  };
+  /* Picture parts (real artwork, e.g. Bhutan's dragon): loaded once, before a game starts */
+  F.pics = {};
+  F.pic = function (src) {
+    if (!F.pics[src]) { const im = new Image(); im.src = src; F.pics[src] = im; }
+    return F.pics[src];
+  };
+  F.preloadPictures = function () {
+    const jobs = [];
+    Object.values(FF.C.flags).forEach(fd => fd.parts.forEach(p => {
+      if (p.shape.t !== 'picture') return;
+      const im = F.pic(p.shape.src);
+      if (!(im.complete && im.naturalWidth)) jobs.push(new Promise(res => { im.addEventListener('load', res, { once: true }); im.addEventListener('error', res, { once: true }); }));
+    }));
+    return Promise.all(jobs);
+  };
+  /* outline of a non-rectangular flag (Nepal) as a path */
+  F.outlineD = fd => fd.outline ? 'M' + fd.outline.map(p => p.join(' ')).join('L') + 'Z' : null;
   F.wheelMarkup = function (cx, cy, r, color) {
     let sp = '';
     for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; sp += `M${cx} ${cy} L${(cx + Math.cos(a) * r * 0.92).toFixed(2)} ${(cy + Math.sin(a) * r * 0.92).toFixed(2)} `; }
@@ -61,6 +103,8 @@
       case 'crescent': return `<path d="${F.crescentD(sh.cx, sh.cy, sh.R, sh.d, sh.r, sh.rot)}" fill="${fill}" ${extra}/>`;
       case 'eagle': return `<g ${extra}>${F.eagleMarkup(sh.cx, sh.cy, sh.s, fill, fill === '#C09300' || fill === '#D4A92A' ? '#7A5E00' : 'rgba(0,0,0,.35)')}</g>`;
       case 'wheel': return F.wheelMarkup(sh.cx, sh.cy, sh.r, fill);
+      case 'emblem': return `<g ${extra}>${F.emblemMarkup(sh, fill)}</g>`;
+      case 'picture': return `<image href="${sh.src}" x="${sh.x}" y="${sh.y}" width="${sh.w}" height="${sh.h}" preserveAspectRatio="none" ${fill === F.GREY ? 'opacity=".45"' : ''} ${extra}/>`;
     }
     return '';
   };
@@ -73,6 +117,8 @@
       case 'star': return { x: sh.cx - sh.R, y: sh.cy - sh.R, w: sh.R * 2, h: sh.R * 2 };
       case 'crescent': return { x: sh.cx - sh.R, y: sh.cy - sh.R, w: sh.R * 2, h: sh.R * 2 };
       case 'eagle': return { x: sh.cx - 36 * sh.s, y: sh.cy - 31 * sh.s, w: 72 * sh.s, h: 65 * sh.s };
+      case 'emblem': { const E = F.EMBLEMS[sh.kind] || { w: 60, h: 60 }; return { x: sh.cx - E.w / 2 * sh.s, y: sh.cy - E.h / 2 * sh.s, w: E.w * sh.s, h: E.h * sh.s }; }
+      case 'picture': return { x: sh.x, y: sh.y, w: sh.w, h: sh.h };
     }
     return { x: 0, y: 0, w: 10, h: 10 };
   };
@@ -97,6 +143,14 @@
     let s = '';
     fd.parts.forEach(p => { s += F.shapeMarkup(p.shape, mode === 'grey' ? F.GREY : p.hex); });
     if (mode === 'grey') s += `<rect width="${fd.w}" height="${fd.h}" fill="url(#pat-rain)"/>`;
+    const od = F.outlineD(fd);
+    if (od) {                                   // a flag that isn't a rectangle (Nepal): clip to its shape
+      const cid = `ol-${id}-${mode || 'full'}`;
+      return `<clipPath id="${cid}"><path d="${od}"/></clipPath><g clip-path="url(#${cid})">${s}
+        <rect x="0" y="0" width="${fd.w}" height="${fd.h}" fill="url(#pat-weave)"/>
+        <rect x="0" y="0" width="${fd.w}" height="${fd.h}" fill="url(#pat-grain)" opacity=".55"/></g>
+        <path d="${od}" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`;
+    }
     return s + F.clothOver(fd.w, fd.h, id.length * 5);
   };
 
@@ -129,7 +183,7 @@
     const fd = F.data(id); const areas = []; const map = {};
     fd.parts.forEach(p => {
       const k = p.area || p.id;
-      if (!map[k]) { map[k] = { id: k, colour: p.colour, hex: p.hex, label: p.area ? (p.colour + ' ' + (fd.parts.filter(q => q.area === p.area).length > 1 ? 'crescent and star' : p.label)) : p.label, parts: [] }; areas.push(map[k]); }
+      if (!map[k]) { map[k] = { id: k, colour: p.colour, hex: p.hex, label: p.areaLabel || (p.area ? (p.colour + ' ' + (fd.parts.filter(q => q.area === p.area).length > 1 ? 'crescent and star' : p.label)) : p.label), parts: [] }; areas.push(map[k]); }
       map[k].parts.push(p);
     });
     return areas;

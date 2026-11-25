@@ -26,6 +26,42 @@
     ctx.lineWidth = 1.3; ctx.stroke(EAGLE_LINES);
     ctx.restore();
   }
+  const EMB = {};   // emblem Path2Ds, made once
+  function emblemPaths(kind) {
+    if (!EMB[kind]) { const E = FF.flags.EMBLEMS[kind]; EMB[kind] = { E, paths: E.paths.map(d => new Path2D(d)), lines: new Path2D(E.lines) }; }
+    return EMB[kind];
+  }
+  function drawEmblem(ctx, sh, fill, line) {
+    const P = emblemPaths(sh.kind);
+    ctx.save();
+    ctx.translate(sh.cx, sh.cy); ctx.scale(sh.s, sh.s);
+    ctx.fillStyle = fill; ctx.strokeStyle = line; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    P.paths.forEach(p => { ctx.fill(p); ctx.stroke(p); });
+    P.E.dots.forEach(c => { ctx.beginPath(); ctx.arc(c[0], c[1], c[2], 0, Math.PI * 2); ctx.fill(); ctx.stroke(); });
+    ctx.lineWidth = 1.4; ctx.stroke(P.lines);
+    ctx.restore();
+  }
+  FL.isPic = sh => sh.t === 'eagle' || sh.t === 'emblem' || sh.t === 'picture';     // drawn as one sticker picture
+  /* a picture part in its own colours, or tinted with another colour (grey before painting,
+     or the colour a child painted it) — the artwork's lines stay visible */
+  const tints = {};
+  function drawPicture(ctx, part, fill) {
+    const sh = part.shape, im = FF.flags.pic(sh.src);
+    if (!(im.complete && im.naturalWidth)) return;
+    if (!fill || fill.toUpperCase() === part.hex.toUpperCase()) { ctx.drawImage(im, sh.x, sh.y, sh.w, sh.h); return; }
+    const k = sh.src + fill;
+    if (!tints[k]) {
+      const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+      const x = c.getContext('2d');
+      x.drawImage(im, 0, 0);
+      x.globalCompositeOperation = 'source-in'; x.fillStyle = fill; x.fillRect(0, 0, c.width, c.height);
+      x.globalCompositeOperation = 'multiply'; x.drawImage(im, 0, 0);
+      x.globalCompositeOperation = 'destination-in'; x.drawImage(im, 0, 0);
+      tints[k] = c;
+    }
+    ctx.drawImage(tints[k], sh.x, sh.y, sh.w, sh.h);
+  }
+  FL.outlinePath = fd => fd.outline ? new Path2D(FF.flags.outlineD(fd)) : null;
   FL.path = function (sh) { // Path2D in flag units (hit tests + clipping)
     const p = new Path2D();
     switch (sh.t) {
@@ -35,6 +71,14 @@
       case 'star': return new Path2D(FF.flags.starD(sh.cx, sh.cy, sh.R, sh.rot, sh.n));
       case 'crescent': return new Path2D(FF.flags.crescentD(sh.cx, sh.cy, sh.R, sh.d, sh.r, sh.rot));
       case 'eagle': p.rect(sh.cx - 36 * sh.s, sh.cy - 31 * sh.s, 72 * sh.s, 66 * sh.s); return p;
+      case 'picture': (sh.hit || [[[sh.x, sh.y], [sh.x + sh.w, sh.y], [sh.x + sh.w, sh.y + sh.h], [sh.x, sh.y + sh.h]]]).forEach(poly => { poly.forEach((q, i) => (i ? p.lineTo(q[0], q[1]) : p.moveTo(q[0], q[1]))); p.closePath(); }); return p;
+      case 'emblem': {                // the real drawing, so the flag around it can still be tapped
+        const P = emblemPaths(sh.kind);
+        const m = new DOMMatrix().translate(sh.cx, sh.cy).scale(sh.s, sh.s);
+        P.paths.forEach(q => p.addPath(q, m));
+        P.E.dots.forEach(c => { const d = new Path2D(); d.arc(c[0], c[1], c[2], 0, Math.PI * 2); p.addPath(d, m); });
+        return p;
+      }
     }
     return p;
   };
@@ -42,6 +86,8 @@
     o = o || {};
     const sh = part.shape;
     if (sh.t === 'eagle') { drawEagle(ctx, sh, fill, o.line || (fill === '#C09300' ? '#7A5E00' : 'rgba(0,0,0,.35)')); return; }
+    if (sh.t === 'emblem') { drawEmblem(ctx, sh, fill, o.line || 'rgba(0,0,0,.35)'); return; }
+    if (sh.t === 'picture') { drawPicture(ctx, part, fill); return; }
     if (sh.t === 'wheel') {
       ctx.save(); ctx.strokeStyle = fill; ctx.lineWidth = sh.r * 0.12;
       ctx.beginPath(); ctx.arc(sh.cx, sh.cy, sh.r, 0, Math.PI * 2); ctx.stroke();
@@ -70,6 +116,8 @@
   };
   FL.draw = function (ctx, id, mode) {
     const fd = data(id);
+    const op = FL.outlinePath(fd);
+    if (op) { ctx.save(); ctx.clip(op); }       // Nepal: only inside the flag's own shape
     if (mode === 'grey') {
       const greys = ['#a9a4b4', '#c4bfcd', '#8f8a9c', '#b6b1c0', '#9d98aa'];
       fd.parts.forEach((p, i) => FL.drawPart(ctx, p, greys[i % greys.length], { line: 'rgba(0,0,0,.25)' }));
@@ -78,6 +126,7 @@
       ctx.restore();
     } else fd.parts.forEach(p => FL.drawPart(ctx, p, p.hex));
     FL.clothFinish(ctx, fd.w, fd.h);
+    if (op) { ctx.restore(); ctx.save(); ctx.strokeStyle = '#3B2A20'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.stroke(op); ctx.restore(); }
   };
   /* canvas sized for a flag; ctx already scaled to flag units */
   FL.canvas = function (id, px) {
@@ -119,7 +168,7 @@
       const geo = new T.PlaneGeometry(this.W, this.H, segX, segY);
       geo.translate(this.W / 2, -this.H / 2, 0);
       this.base = geo.attributes.position.array.slice();
-      this.mat = F3.ownMat(new T.MeshStandardMaterial({ map: o.tex || FL.tex(id, o.mode), side: T.DoubleSide, roughness: 0.7, metalness: 0, envMapIntensity: 0.35 }));
+      this.mat = F3.ownMat(new T.MeshStandardMaterial({ map: o.tex || FL.tex(id, o.mode), side: T.DoubleSide, roughness: 0.7, metalness: 0, envMapIntensity: 0.35, alphaTest: 0.5 }));   // alphaTest: Nepal's shape
       this.mat.map.userData.keep = true;
       this.cloth = new T.Mesh(geo, this.mat);
       this.cloth.castShadow = true;
@@ -214,6 +263,28 @@
       const m = new T.Mesh(new T.PlaneGeometry(80 * part.shape.s, 80 * part.shape.s), F3.ownMat(new T.MeshPhysicalMaterial({ map: tex, transparent: true, alphaTest: 0.3, roughness: 0.2, metalness: 0.5, clearcoat: 1, side: T.DoubleSide })));
       m.position.z = 2; m.castShadow = true;
       g.add(m);
+    } else if (part.shape.t === 'wheel') {            // India's wheel: the real wheel with spokes, as a sticker
+      const sh = part.shape, S = 256;
+      const tex = F3.canvasTex(S, S, (ctx) => { ctx.scale(S / (sh.r * 2.2), S / (sh.r * 2.2)); ctx.translate(sh.r * 1.1 - sh.cx, sh.r * 1.1 - sh.cy); FL.drawPart(ctx, part, part.hex); });
+      const m = new T.Mesh(new T.PlaneGeometry(sh.r * 2.2, sh.r * 2.2), F3.ownMat(new T.MeshPhysicalMaterial({ map: tex, transparent: true, alphaTest: 0.3, roughness: 0.3, clearcoat: 1, side: T.DoubleSide })));
+      m.position.z = 2; m.castShadow = true;
+      g.add(m);
+    } else if (part.shape.t === 'picture') {          // real artwork (Bhutan's dragon): a glossy sticker
+      const sh = part.shape, SW = 512, SH = Math.round(SW * sh.h / sh.w);
+      const tex = F3.canvasTex(SW, SH, (ctx) => { ctx.scale(SW / sh.w, SH / sh.h); ctx.translate(-sh.x, -sh.y); FL.drawPart(ctx, part, part.hex); });
+      const m = new T.Mesh(new T.PlaneGeometry(sh.w, sh.h), F3.ownMat(new T.MeshPhysicalMaterial({ map: tex, transparent: true, alphaTest: 0.3, roughness: 0.3, metalness: 0.05, clearcoat: 1, side: T.DoubleSide })));
+      m.position.z = 2; m.castShadow = true;
+      g.add(m);
+    } else if (part.shape.t === 'emblem') {           // Afghanistan's emblem: a glossy sticker
+      const E = FF.flags.EMBLEMS[part.shape.kind];
+      const SW = 384, SH = Math.round(SW * E.h / E.w);
+      const tex = F3.canvasTex(SW, SH, (ctx) => {
+        ctx.translate(SW / 2, SH / 2); ctx.scale(SW / (E.w + 4), SW / (E.w + 4));
+        FL.drawPart(ctx, Object.assign({}, part, { shape: Object.assign({}, part.shape, { cx: 0, cy: 0, s: 1 }) }), part.hex);
+      });
+      const m = new T.Mesh(new T.PlaneGeometry((E.w + 4) * part.shape.s, (E.w + 4) * part.shape.s * SH / SW), F3.ownMat(new T.MeshPhysicalMaterial({ map: tex, transparent: true, alphaTest: 0.3, roughness: 0.25, metalness: 0.1, clearcoat: 1, side: T.DoubleSide })));
+      m.position.z = 2; m.castShadow = true;
+      g.add(m);
     } else {
       const shape = FL.shape(part.shape, fd.h);
       const geo = new T.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: true, bevelThickness: 1.2, bevelSize: 1.0, bevelSegments: 2, curveSegments: 24 });
@@ -268,7 +339,7 @@
     };
     const geo = new T.ExtrudeGeometry(pc.shape, { depth: 6, bevelEnabled: true, bevelThickness: 1.5, bevelSize: 1.2, bevelSegments: 2, curveSegments: 18, UVGenerator: uv });
     geo.translate(-pc.cx, -pc.cy, 0);
-    const front = F3.ownMat(new T.MeshPhysicalMaterial({ map: FL.tex(texId), roughness: 0.55, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 0.4 }));
+    const front = F3.ownMat(new T.MeshPhysicalMaterial({ map: FL.tex(texId), roughness: 0.55, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 0.4, alphaTest: 0.5 }));
     front.map.userData.keep = true;
     const m = new T.Mesh(geo, [front, F3.toy('#fff6e0', { rough: 0.5 })]);
     m.castShadow = true; m.receiveShadow = true;

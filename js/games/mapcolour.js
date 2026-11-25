@@ -147,8 +147,11 @@
     }
 
     /* ================= Part B: GOOD JOB! ================= */
-    async partB() {
-      await FF.ui.wipe(() => {
+    /* o.paint: the Colour step on its own (no map before it) — no wipe and no "GOOD JOB!",
+       just: the big flag rises → "Look closely — this is X's flag!" → Grumble washes it → paint */
+    async partB(o) {
+      o = o || {};
+      const setup = () => {
         const w = this.setWorld(FF.frontWorld({ ground: { stageX: 6, stageZ: -18 } }));
         this.input({});
         const fd = this.fd;
@@ -159,17 +162,20 @@
         this.bigW = W; this.bigH = H;
         this.makeFriend(w, 4.7, -3.4, -0.4, 2.4);
         this.friend.turn(-0.35);
-      });
+      };
+      if (o.paint) setup(); else await FF.ui.wipe(setup);
       if (!this.alive) return;
       const w = this.w, f = this.bigFlag;
       FF.audio.sfx('drumroll', 0.9);
       await this.tween(0.7, kk => { f.group.position.y = -3.4 - 7 * (1 - kk); }, FF.ease.backBig);
       if (!this.alive) return;
-      this.banner('GOOD JOB!', 150, 104);
-      FF.audio.sfx('cheer');
-      F3.confetti(w, new T.Vector3(0, 4.5, 0.5), 14, 2.5, 140);
-      this.friend.play('happy');
-      await this.wait(1000);
+      if (!o.paint) {
+        this.banner('GOOD JOB!', 150, 104);
+        FF.audio.sfx('cheer');
+        F3.confetti(w, new T.Vector3(0, 4.5, 0.5), 14, 2.5, 140);
+        this.friend.play('happy');
+      }
+      await this.wait(o.paint ? 400 : 1000);
       if (!this.alive) return;
       this.layer.top.innerHTML = '';
       await FF.say('lookFlag', this.ctx, { hold: 600 });
@@ -205,7 +211,7 @@
       const w = this.w;
       if (this.friend) { w.scene.remove(this.friend.root); w.chars = (w.chars || []).filter(c => c !== this.friend); this.friend = null; }
       const fd = this.fd, id = this.country.id;
-      FF.hud.title(this.layer.top, this.title || "Now let's colour the flag!", 640, 132, 54, { seed: 9 });
+      FF.hud.title(this.layer.top, this.title || "Now let's colour the flag!", 640, 140, 48, { seed: 9 });   // clear of the friends strip above
       FF.say(this.colourLine || 'colourNow', this.ctx, { hold: 600 });
 
       // the paintable cloth
@@ -280,10 +286,13 @@
     repaint() {
       const { ctx } = this.cv, fd = this.fd;
       ctx.clearRect(0, 0, fd.w, fd.h);
+      const op = FL().outlinePath(fd);
+      ctx.save();
+      if (op) ctx.clip(op);                          // Nepal: only inside the flag's own shape
       ctx.fillStyle = BLANK; ctx.fillRect(0, 0, fd.w, fd.h);
       fd.parts.forEach(part => {
         const f = part._paint;                       // { x, y, r, R, hex } once painted
-        if (part.shape.t === 'eagle') { FL().drawPart(ctx, part, f && f.r >= f.R ? f.hex : BLANK, { line: f && f.hex === part.hex ? null : 'rgba(0,0,0,.3)' }); return; }
+        if (FL().isPic(part.shape)) { FL().drawPart(ctx, part, f && f.r >= f.R ? f.hex : BLANK, { line: f && f.hex === part.hex ? null : 'rgba(0,0,0,.3)' }); return; }
         const path = FL().path(part.shape);
         ctx.save(); ctx.clip(path);
         ctx.fillStyle = BLANK; ctx.fillRect(0, 0, fd.w, fd.h);
@@ -298,6 +307,7 @@
         }
         ctx.restore();
       });
+      ctx.restore();
       this.redrawLines(this._glowNow, this._glowK);
     }
     redrawLines(glowArea, gk) {
@@ -305,13 +315,15 @@
       ctx.save();
       ctx.lineJoin = 'round';
       fd.parts.forEach(p => {
-        if (p.shape.t === 'eagle') return;
+        if (FL().isPic(p.shape)) return;
         const isGlow = glowArea && glowArea.parts.includes(p);
         ctx.strokeStyle = isGlow ? `rgba(255,178,31,${0.4 + gk * 0.6})` : '#2a1f3d';
         ctx.lineWidth = isGlow ? 6 : 2.6;
         ctx.stroke(FL().path(p.shape));
       });
-      ctx.strokeStyle = '#2a1f3d'; ctx.lineWidth = 4; ctx.strokeRect(1, 1, fd.w - 2, fd.h - 2);
+      ctx.strokeStyle = '#2a1f3d'; ctx.lineWidth = 4;
+      const op = FL().outlinePath(fd);
+      if (op) ctx.stroke(op); else ctx.strokeRect(1, 1, fd.w - 2, fd.h - 2);
       ctx.restore();
       if (this.tex) this.tex.needsUpdate = true;
     }
@@ -554,16 +566,11 @@
       L.setAttribute('data-stars', n);
       return L;
     }
+    /* just the country's name on a small card (no map shape: it only confused children) */
     countryCard(parent, x, y) {
-      const c = FF.geo.countries[this.country.id];
-      const W = 236, Hh = 214;
-      const card = FF.hud.panel(parent, x, y, W, Hh, { stroke: '#5a3214', sw: 5, r: 24 });
-      FF.hud.text(card, this.country.name, W / 2, 42, 32, { fill: '#ffffff', stroke: '#5a3214' });
-      const s = Math.min((W - 40) / c.bbox.w, (Hh - 80) / c.bbox.h);
-      const ox = W / 2 - c.cx * s, oy = 56 + (Hh - 70) / 2 - c.cy * s;
-      const g = FF.el('g', { transform: `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) scale(${s.toFixed(4)})` }, card);
-      FF.el('path', { d: c.d, fill: 'rgba(40,20,5,.25)', transform: `translate(${(3 / s).toFixed(1)} ${(5 / s).toFixed(1)})` }, g);
-      FF.el('path', { d: c.d, fill: F3.mapkit.COL[this.country.id] || '#ffb21f', stroke: '#5a3214', 'stroke-width': (4 / s).toFixed(2), 'stroke-linejoin': 'round' }, g);
+      const W = 236, Hh = 76;
+      const card = FF.hud.panel(parent, x, y, W, Hh, { stroke: '#5a3214', sw: 5, r: 22 });
+      FF.hud.text(card, this.country.name, W / 2, Hh / 2 + 12, this.country.name.length > 9 ? 28 : 34, { fill: '#ffffff', stroke: '#5a3214' });
       return card;
     }
   }
@@ -574,9 +581,11 @@
     start() {
       FF.audio.music('calm');
       FF.pip.show(84, 704, 1.05);
+      FF.pip.spot = { x: 26, y: 262, w: 330, tail: 'left' };     // left side: never on the flag, the jars or the cards
       this.title = 'Paint the flag!';
       this.colourLine = 'paintIntro';
-      this.partC(true);
+      // like before: first the real flag big — "look carefully" — then Grumble washes it grey
+      this.partB({ paint: true });
     }
   }
   FF.games.paint = PaintFlag;
