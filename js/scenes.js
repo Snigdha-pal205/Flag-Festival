@@ -16,9 +16,9 @@
       const w = this.setWorld(new F3.World({ bg: 'title.jpg', fog: false }));
       this.input({});
       const L = this.layer.top;
-      const k = 1280 / 1672;   // poster pixels → stage pixels
+      const M = FF.bgMap('title.jpg'), k = M.s;   // poster pixels → stage pixels (the poster fills the screen)
       // PLAY: the poster's own button, cut out so it can bounce
-      const pg = FF.el('g', { transform: `translate(${(600 + 243) * k} ${(535 + 87) * k})`, class: 'tappable' }, L);
+      const pg = FF.el('g', { transform: `translate(${M.x(600 + 243).toFixed(1)} ${M.y(535 + 87).toFixed(1)})`, class: 'tappable' }, L);
       const pi = FF.el('g', { class: 'btn-bob' }, pg);
       FF.el('image', { href: 'assets/bg/play.png', x: -243 * k, y: -87 * k, width: 485 * k, height: 175 * k }, pi);
       FF.el('rect', { x: -240 * k, y: -85 * k, width: 480 * k, height: 170 * k, fill: 'transparent' }, pg);
@@ -28,14 +28,22 @@
       const drops = [];
       for (let i = 0; i < 14; i++) {
         const d = FF.el('path', { d: 'M0 0 q-3 7 0 10 q3 -3 0 -10z', fill: '#9fd8ff', opacity: 0.8 }, rain);
-        drops.push({ d, x: FF.rand(1010, 1170), y: FF.rand(140, 260), v: FF.rand(160, 240) });
+        drops.push({ d, x: FF.rand(1319, 1528), y: FF.rand(183, 340), v: FF.rand(210, 310) });      // in poster pixels, under Grumble
       }
-      this.tick(dt => drops.forEach(p => { p.y += p.v * dt; if (p.y > 270) { p.y = 150; p.x = FF.rand(1010, 1170); } p.d.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`); }));
+      this.tick(dt => drops.forEach(p => { p.y += p.v * dt; if (p.y > 352) { p.y = 196; p.x = FF.rand(1319, 1528); } p.d.setAttribute('transform', `translate(${M.x(p.x).toFixed(1)} ${M.y(p.y).toFixed(1)})`); }));
       this.grownUps();
     }
     grownUps() {
-      const k = 1280 / 1672;
-      const g = FF.el('g', { transform: `translate(${1522 * k} ${883 * k})` }, this.layer.top);
+      const M = FF.bgMap('title.jpg'), k = M.s;
+      // the poster's own "Grown-ups" button — or, if a wide screen trims it off, our own one in the corner
+      let gx = M.x(1522), gy = M.y(883);
+      const own = gy + 42 * k > 712;
+      if (own) { gx = 1280 + FF.OX - 140 * k; gy = 720 - 52 * k; }
+      const g = FF.el('g', { transform: `translate(${gx.toFixed(1)} ${gy.toFixed(1)})` }, this.layer.top);
+      if (own) {
+        FF.el('path', { d: FF.hud.rr(-128 * k, -40 * k, 256 * k, 80 * k, 40 * k), fill: '#fff8ec', stroke: '#5a3214', 'stroke-width': 5 }, g);
+        FF.hud.text(g, 'Grown-ups', 0, 12 * k, 34 * k, { fill: '#5a3214' });
+      }
       FF.el('rect', { x: -130 * k, y: -42 * k, width: 260 * k, height: 84 * k, rx: 40 * k, fill: 'transparent' }, g);
       const ring = FF.el('path', { d: FF.hud.rr(-128 * k, -40 * k, 256 * k, 80 * k, 40 * k), fill: 'none', stroke: '#5cc531', 'stroke-width': 6, 'stroke-dasharray': '520', 'stroke-dashoffset': 520 }, g);
       g.classList.add('tappable');
@@ -299,6 +307,9 @@
       FF.onTap(again, () => { FF.audio.sfx('tap'); FF.app.again(); }, this);
     }
   };
+
+  // the title screen is laid out on the poster: redraw it if the screen changes shape
+  FF.onLayout.add(() => { if (FF.current instanceof S.Title && FF.app) FF.app.go(new S.Title(), false); });
 
   /* ================= Grown-ups settings (text is for adults) ================= */
   S.settings = function () {

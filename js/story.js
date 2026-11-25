@@ -23,8 +23,11 @@
       const team = FF.friends.team;
       const L = FF.el('g', {}, this.layer.top);
       // they march in from the left, stop in a row in the middle, then (opening) march off right
-      const spots = team.length === 2 ? [380, 850] : [280, 620, 960];   // room for the big flags
-      this.sprites = team.map((m, i) => new FF.friends.Sprite(L, m, { h: 330, x: -260 - (team.length - 1 - i) * 300, y: 690, walk: true, mood: final ? 4 : 1, flag: final ? m.flag : null }));
+      const spots = team.length === 2 ? (final ? [300, 760] : [380, 850]) : [280, 620, 960];   // room for the big flags (and, at the end, the buttons)
+      // they walk ON the sandy path of the background picture (at picture row ~772, wherever
+      // that is on this screen)
+      const pathY = Math.min(700, FF.bgMap('festival.jpg').y(772));
+      this.sprites = team.map((m, i) => new FF.friends.Sprite(L, m, { h: 300, x: -260 - (team.length - 1 - i) * 300, y: pathY, walk: true, mood: final ? 4 : 1, flag: final ? m.flag : null }));
       this.tick(dt => this.sprites.forEach(s => s.update(dt)));
       FF.pip.show(1150, 300, 1.15);
       FF.pip.spot = { x: 640, y: 90, w: 420, tail: 'right' };     // clear of the friends, the "?" flag and HOORAY
@@ -41,7 +44,7 @@
       // tap a friend to hear their name (and, at the end, their country)
       this.listen(FF.svg, 'pointerdown', e => {
         const p = FF.toLocal(e);
-        const s = this.sprites.find(sp => Math.abs(p.x - sp.x) < 120 && p.y < sp.y && p.y > sp.y - 340);
+        const s = this.sprites.find(sp => Math.abs(p.x - sp.x) < 120 && p.y < sp.y && p.y > sp.y - 310);
         if (!s) return;
         s.hop(); FF.audio.sfx('pop');
         FF.audio.say(final ? s.m.country.name + '!' : s.m.name + '!', { who: 'pip', key: final ? 'country_' + s.m.country.id : 'friend_' + s.m.kind });
@@ -80,9 +83,10 @@
         await FF.say('storyEnd', {}, { hold: 99999 });
       })();
       if (final) {
-        const home = H.button(this.layer.top, 1110, 150, 200, 96, { color: '#3d9bff', icon: 'home' });
+        // the way home / play again: bottom-right, clear of Pip, his words and the friends
+        const home = H.button(this.layer.top, 1150, 655, 190, 90, { color: '#3d9bff', icon: 'home' });
         FF.onTap(home, () => { FF.audio.sfx('tap'); FF.app.home(); }, this);
-        const again = H.round(this.layer.top, 1110, 270, 42, { color: '#ffb21f', icon: 'again' });
+        const again = H.round(this.layer.top, 1212, 535, 42, { color: '#ffb21f', icon: 'again' });
         FF.onTap(again, () => { FF.audio.sfx('tap'); FF.app.again(); }, this);
       } else {
         const next = H.round(this.layer.top, 1214, 650, 42, { color: '#3fcf5a', icon: 'skip' });

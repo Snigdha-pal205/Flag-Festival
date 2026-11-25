@@ -153,26 +153,25 @@
      PLAY button still lines up), and the sides are filled with a soft, blurred, zoomed-in
      copy of the same picture that blends into it — no empty bars.                        */
   const bgCache = {}, bgImgs = {};
-  function bgCompose(img, VW) {
-    const H = img.naturalHeight, IW = img.naturalWidth, W = Math.max(IW, Math.round(H * VW / 720));
-    const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const ctx = c.getContext('2d');
-    if (W <= IW + 1) { ctx.drawImage(img, 0, 0); return c; }
-    // 1) blurred, zoomed copy that covers everything
-    const k = W / IW * 1.08, bw = IW * k, bh = H * k;
-    ctx.filter = 'blur(' + Math.round(H / 40) + 'px) saturate(1.1)';
-    ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
-    ctx.filter = 'none';
-    // 2) the sharp picture in the middle with feathered left/right edges
-    const sc = document.createElement('canvas'); sc.width = IW; sc.height = H;
-    const sx = sc.getContext('2d');
-    sx.drawImage(img, 0, 0);
-    const f = 0.06;
-    const g = sx.createLinearGradient(0, 0, IW, 0);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(f, 'rgba(0,0,0,1)');
-    g.addColorStop(1 - f, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    sx.globalCompositeOperation = 'destination-in'; sx.fillStyle = g; sx.fillRect(0, 0, IW, H);
-    ctx.drawImage(sc, (W - IW) / 2, 0);
+  /* Backgrounds always fill the WHOLE screen, sharp (no blurred sides): on a wide phone the
+     picture is scaled to the full width and a little is trimmed from its top/bottom instead.
+     FF.bgMap(name) tells every screen where a point of the picture is on the stage, so things
+     drawn on top (the PLAY button, the path the friends walk on) always line up.            */
+  const BG_SIZE = { 'title.jpg': [1672, 941], 'festival.jpg': [1672, 941], 'ocean.jpg': [1672, 941] };
+  const BG_TOP = { 'title.jpg': 0.2, 'festival.jpg': 0.35, 'ocean.jpg': 0.5 };   // share of the trim taken from the top
+  FF.bgMap = function (name) {
+    const sz = BG_SIZE[name] || [1672, 941], IW = sz[0], IH = sz[1];
+    const s = FF.VW / IW;                                     // picture px → stage px
+    const vh = Math.min(IH, 720 / s);                         // picture rows that fit on the screen
+    const top = (IH - vh) * (BG_TOP[name] === undefined ? 0.5 : BG_TOP[name]);
+    return { s, top, vh, x: ix => -FF.OX + ix * s, y: iy => (iy - top) * s };
+  };
+  function bgCompose(img, VW, name) {
+    const IW = img.naturalWidth, IH = img.naturalHeight;
+    const M = FF.bgMap(name), sz = BG_SIZE[name] || [IW, IH], kk = IH / sz[1];
+    const vh = Math.round(M.vh * kk), top = Math.round(M.top * kk);
+    const c = document.createElement('canvas'); c.width = IW; c.height = vh;
+    c.getContext('2d').drawImage(img, 0, -top);
     return c;
   }
   /* returns the finished texture, or null and calls ready(tex) once the picture has loaded */
@@ -183,7 +182,7 @@
     if (!img) { img = bgImgs[name] = new Image(); img.src = 'assets/bg/' + name; }
     const make = () => {
       if (!bgCache[key]) {
-        const t = new T.CanvasTexture(bgCompose(img, VW));
+        const t = new T.CanvasTexture(bgCompose(img, VW, name));
         t.colorSpace = T.SRGBColorSpace; t.userData.keep = true;
         bgCache[key] = t;
       }

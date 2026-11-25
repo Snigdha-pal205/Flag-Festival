@@ -59,7 +59,7 @@
     const G = GEO();
     const c = G.countries[id];
     const g = new T.Group();
-    const body = extrude(shapeFrom(c.pts), DEPTH, M.mat(M.COL[id]));
+    const body = extrude(shapeFrom(c.pts, true), DEPTH, M.mat(M.COL[id]));   // (cut at the board's edge on a zoomed map)
     g.add(body);
     const top = DEPTH + 3;
     (G.decor[id] || []).forEach(dc => { const p = G.P(dc[1], dc[2]); decor(g, dc[0], p[0], p[1], top); });
@@ -134,6 +134,8 @@
     if (o.labels !== false) {
       FF.C.countries.forEach(cn => {
         if (missing.includes(cn.id)) return;
+        const lp = G.P(cn.label[0], cn.label[1]);
+        if (lp[0] < 30 || lp[0] > G.W - 30 || lp[1] < 20 || lp[1] > G.H - 20) return;   // off this (zoomed) map
         labels[cn.id] = M.label(root, cn, ox, oz, k);
       });
     }
@@ -147,7 +149,10 @@
   };
   M.label = function (root, cn, ox, oz, k) {
     const p = GEO().P(cn.label[0], cn.label[1]);
-    const sp = F3.label(cn.name, { height: cn.labelSize || (cn.id === 'tunisia' ? 0.26 : 0.34), size: 72, color: '#3b2a20' });
+    // on a zoomed-in map, small countries' names grow with it (never bigger than the normal size)
+    const G = GEO(), zoom = G.view ? (G.K / (800 / 78)) : 1;
+    const base = cn.labelSize || (cn.id === 'tunisia' ? 0.26 : 0.34);
+    const sp = F3.label(cn.name, { height: Math.min(0.36, base * zoom), size: 72, color: '#3b2a20' });
     sp.position.set(ox + p[0] * k, 0.75, oz + p[1] * k);
     root.add(sp);
     return sp;

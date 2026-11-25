@@ -35,6 +35,8 @@
       jobs.push(load(DIR + `${k}-${n}-flag.png`).then(im => { Fr.imgs[`${k}-${n}-flag`] = im; }));
     } });
     jobs.push(load('assets/bg/name-flag.png').then(im => { Fr.imgs.nameflag = im; }));   // the glossy "?" flag cloth
+    jobs.push(load('assets/bg/flag-shade.png').then(im => { Fr.imgs.flagshade = im; }));  // its folds (for real flags)
+    jobs.push(load('assets/bg/flag-shine.png').then(im => { Fr.imgs.flagshine = im; }));  // its shine
     // the names on the flags use the game's title font: wait for it before drawing any
     if (document.fonts && document.fonts.load) jobs.push(document.fonts.load('40px "Lilita One"').catch(() => {}));
     Fr.ready = Promise.all(jobs);
@@ -54,25 +56,45 @@
     const key = `${kind}-${n}-${flagId || 'name:' + (label || '')}`;
     if (Fr.urls[key]) return Fr.urls[key];
     const base = Fr.imgs[`${kind}-${n}`], mask = Fr.imgs[`${kind}-${n}-flag`];
-    if (!base || !mask) return DIR + `${kind}-${n}.png`;
+    const cloth = Fr.imgs.nameflag, shade = Fr.imgs.flagshade, shine = Fr.imgs.flagshine;
+    if (!base || !mask || !cloth || !shade || !shine) return DIR + `${kind}-${n}.png`;
     const m = Fr.meta(kind, n);
     const c = document.createElement('canvas'); c.width = (m.w + EX) * Q; c.height = m.h * Q;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
     const { bx: BX, by: BY } = grow(m);
-    const cloth = Fr.imgs.nameflag;
-    if (!flagId && cloth) {
-      // NOT won back yet: the glossy "?" flag (the artist's picture) with the country's name.
-      // The cloth hangs BEHIND the friend's own pole and hand: cloth first, then the friend
-      // (with the artwork's small flag cut out) on top.
-      const cw = m.fw * BX, ch = m.fh * BY, cx0 = m.fx - 3, cy0 = m.fy - 2;
-      ctx.drawImage(cloth, cx0 * Q, cy0 * Q, cw * Q, ch * Q);
-      const body = document.createElement('canvas'); body.width = m.w * Q; body.height = m.h * Q;
-      const bx = body.getContext('2d');
-      bx.imageSmoothingQuality = 'high';
-      bx.drawImage(base, 0, 0, body.width, body.height);
-      bx.globalCompositeOperation = 'destination-out'; bx.drawImage(mask, 0, 0, body.width, body.height);
-      ctx.drawImage(body, 0, 0);
+    // the flag hangs BEHIND the friend's own pole and hand: flag first, then the friend
+    // (with the artwork's small flag cut out) on top
+    const cw = m.fw * BX, ch = m.fh * BY, cx0 = m.fx - 3, cy0 = m.fy - 2;
+    const fd = flagId ? FF.flags.data(flagId) : null;
+    if (!fd) {
+      ctx.drawImage(cloth, cx0 * Q, cy0 * Q, cw * Q, ch * Q);           // the glossy "?" cloth
+    } else if (fd.outline) {
+      // Nepal: its own two-pennant shape (no cloth picture), hanging from the pole
+      const nh = ch * 1.25, nw = nh * fd.w / fd.h;
+      ctx.save(); ctx.translate((cx0 + 2) * Q, cy0 * Q); ctx.scale(nw * Q / fd.w, nh * Q / fd.h);
+      FF.three.flags.draw(ctx, flagId, 'full');
+      ctx.restore();
+    } else {
+      // every other flag: the real flag on the SAME glossy cloth as the "?" flag — same wavy
+      // shape, its folds and shadows (multiply) and its shine (white highlights)
+      const W2 = Math.round(cw * Q), H2 = Math.round(ch * Q);
+      const fc = document.createElement('canvas'); fc.width = W2; fc.height = H2;
+      const fx = fc.getContext('2d');
+      fx.imageSmoothingQuality = 'high';
+      fx.save(); fx.scale(W2 / fd.w, H2 / fd.h); FF.three.flags.draw(fx, flagId, 'full'); fx.restore();
+      fx.globalCompositeOperation = 'destination-in'; fx.drawImage(shade, 0, 0, W2, H2);   // the cloth's shape
+      fx.globalCompositeOperation = 'multiply'; fx.drawImage(shade, 0, 0, W2, H2);         // folds
+      fx.globalCompositeOperation = 'source-atop'; fx.drawImage(shine, 0, 0, W2, H2);      // shine
+      ctx.drawImage(fc, cx0 * Q, cy0 * Q);
+    }
+    const body = document.createElement('canvas'); body.width = m.w * Q; body.height = m.h * Q;
+    const bx = body.getContext('2d');
+    bx.imageSmoothingQuality = 'high';
+    bx.drawImage(base, 0, 0, body.width, body.height);
+    bx.globalCompositeOperation = 'destination-out'; bx.drawImage(mask, 0, 0, body.width, body.height);
+    ctx.drawImage(body, 0, 0);
+    if (!fd) {
       const text = (str, x, y, size, maxW, fill, stroke) => {
         ctx.font = `${size}px "Lilita One", "Fredoka", sans-serif`;
         const tw = ctx.measureText(str).width;
@@ -84,32 +106,7 @@
       const mx = (cx0 + cw * 0.5) * Q;
       text('?', mx, (cy0 + ch * 0.33) * Q, ch * 0.46 * Q, cw * Q, '#ffffff', '#e2700a');          // the big "?"
       if (label) text(label, mx, (cy0 + ch * 0.72) * Q, ch * 0.27 * Q, cw * 0.8 * Q, '#ffffff', '#7a4a10');   // the country
-      Fr.urls[key] = c.toDataURL();
-      return Fr.urls[key];
     }
-    ctx.drawImage(base, 0, 0, m.w * Q, m.h * Q);
-    // the real flag (won back): the cloth scaled up around the corner where it meets the pole
-    // (top-left), so the bigger flag hangs from the same pole and fully covers the small one
-    const big = g => { g.scale(Q, Q); g.translate(m.fx, m.fy); g.scale(BX, BY); g.translate(-m.fx, -m.fy); };
-    const fl = document.createElement('canvas'); fl.width = c.width; fl.height = c.height;
-    const fx = fl.getContext('2d');
-    fx.imageSmoothingQuality = 'high';
-    fx.save(); big(fx);
-    if (flagId) {
-      const fd = FF.flags.data(flagId);
-      fx.translate(m.fx, m.fy); fx.scale(m.fw / fd.w, m.fh / fd.h);
-      FF.three.flags.draw(fx, flagId, 'full');
-    } else {
-      fx.fillStyle = '#fdc424';                                                // (fallback) plain yellow cloth
-      fx.fillRect(m.fx - 2, m.fy - 2, m.fw + 4, m.fh + 4);
-    }
-    fx.restore();
-    fx.save(); big(fx);
-    fx.globalCompositeOperation = 'destination-in'; fx.drawImage(mask, 0, 0);   // only on the cloth
-    fx.globalCompositeOperation = 'multiply'; fx.drawImage(mask, 0, 0);         // keep the folds
-    fx.restore();
-    ctx.save(); big(ctx); ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(mask, 0, 0); ctx.restore();   // no old flag peeking out
-    ctx.drawImage(fl, 0, 0);
     Fr.urls[key] = c.toDataURL();
     return Fr.urls[key];
   };

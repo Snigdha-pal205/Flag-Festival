@@ -36,25 +36,25 @@
 
       this.makeFriend(w, -5.6, -3.4, -0.4, 2.2);
       this.friend.turn(0.45);
-      FF.pip.show(1206, 708, 1.0);
-      FF.pip.spot = { x: 880, y: 345, w: 388, tail: 'right' };   // between the "Copy this flag" card and the tray
+      FF.pip.show(80, 706, 0.95);
+      FF.pip.spot = { x: 14, y: 250, w: 282, tail: 'left' };     // left side, beside the flag pole — never on the pieces
 
-      // the tray
-      const tz = w.atY(640, 672, -3.4).z;          // the tray sits on the grass, near the bottom of the screen
-      const tl = w.atZ(330, 560, tz), br = w.atZ(1130, 690, tz);
-      const trayY = -3.4 + 0.28;
-      const tw = F3.woodTex('#b9773f'); tw.repeat.set(4, 1);
-      const tray = F3.B(w.scene, br.x - tl.x + 0.8, 0.28, 1.2, F3.ownMat(new T.MeshStandardMaterial({ map: tw, roughness: 0.85 })), (tl.x + br.x) / 2, trayY - 0.14, tz - 0.1);
-      tray.receiveShadow = true;
-      F3.B(w.scene, br.x - tl.x + 0.8, 0.22, 0.14, F3.toy('#8a5a32'), (tl.x + br.x) / 2, trayY + 0.06, tz + 0.5);
+      // A big wooden board under the flag, using the whole lower part of the screen, so every
+      // piece is large and easy to see and grab — even on a phone.
+      const bz = 1.2;                                            // the board stands a little in front of the cloth
+      const X0 = 300, X1 = 1262, Y0 = 428, Y1 = 708;             // board area in stage pixels
+      const tl = w.atZ(X0, Y0, bz), br = w.atZ(X1, Y1, bz);
+      const upp = (br.x - tl.x) / (X1 - X0);                     // world units per stage pixel on the board
+      const tw = F3.woodTex('#c98a4e'); tw.repeat.set(3, 1);
+      const brd = F3.B(w.scene, br.x - tl.x + 0.25, tl.y - br.y + 0.25, 0.12, F3.ownMat(new T.MeshStandardMaterial({ map: tw, roughness: 0.85 })), (tl.x + br.x) / 2, (tl.y + br.y) / 2, bz - 0.3);
+      brd.receiveShadow = true;
 
       let list = fd.parts.map((p, idx) => ({ part: p, idx, real: true }));
       list = list.concat(this.distractors());           // always 3 extra pieces, none a copy
       list = FF.shuffle(list);
       const n = list.length;
-      const rowsN = n > 5 ? 2 : 1, perRow = Math.ceil(n / rowsN);
-      const slotW = (br.x - tl.x) / perRow;
-      const rowH = rowsN === 1 ? 1.1 : 0.62;
+      const rowsN = n > 1 ? 2 : 1, perRow = Math.ceil(n / rowsN);
+      const slotWpx = (X1 - X0) / perRow, slotHpx = (Y1 - Y0) / rowsN;
       this.parts = list.map((P, k) => {
         const row = Math.floor(k / perRow), col = k % perRow;
         const inRow = row === rowsN - 1 ? n - perRow * (rowsN - 1) : perRow;
@@ -66,12 +66,11 @@
         const pad = Math.max(b.w, b.h) * 0.12;
         const hit = new T.Mesh(new T.PlaneGeometry(b.w + pad, b.h + pad), F3.ownMat(new T.MeshBasicMaterial({ visible: false })));
         hit.position.z = 2; g.add(hit);
-        let hs = Math.min(slotW * 0.8 / b.w, rowH * 0.85 / b.h, s);
-        if (Math.max(b.w, b.h) * hs < 0.7) hs = Math.min(s * 1.25, 0.7 / Math.max(b.w, b.h));
-        const midX = (tl.x + br.x) / 2;
-        const x = midX + (col - (inRow - 1) / 2) * slotW;
-        const y = rowsN === 1 ? trayY + b.h * hs / 2 + 0.05 : trayY + 0.08 + rowH * (row === 0 ? 1.55 : 0.5);
-        Object.assign(P, { g, hs, home: new T.Vector3(x, y, tz - (rowsN > 1 && row === 0 ? 0.35 : 0)), hr: FF.rand(-0.15, 0.15), placed: false, c: g.userData.center });
+        // as big as its place on the board allows (small stars and wheels are made big too)
+        const hs = Math.min(slotWpx * 0.8 * upp / b.w, slotHpx * 0.76 * upp / b.h);
+        const sx = X0 + (col + 0.5 + (perRow - inRow) / 2) * slotWpx, sy = Y0 + (row + 0.5) * slotHpx;
+        const home = w.atZ(sx, sy, bz);
+        Object.assign(P, { g, hs, home, hr: FF.rand(-0.12, 0.12), placed: false, c: g.userData.center });
         P.target = new T.Vector3(BL.x + P.c.x * s, BL.y + P.c.y * s, 0.02 + (P.idx || 0) * 0.035);
         g.position.copy(P.home); g.scale.setScalar(hs); g.rotation.z = P.hr;
         g.traverse(o => { if (o.isMesh) o.userData.part = P; });
