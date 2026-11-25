@@ -211,6 +211,7 @@
     FF.initStage();
     FF.art.initDefs();
     FF.three.init();
+    FF.three.preloadBg(['title.jpg', 'ocean.jpg', 'festival.jpg']);
     FF.three.chars.preload();
     FF.ui.init();
     FF.pip.init();

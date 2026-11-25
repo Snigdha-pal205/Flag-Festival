@@ -304,7 +304,7 @@
   S.settings = function () {
     const L = FF.layers.top;
     const g = FF.el('g', {}, L);
-    g.innerHTML = `<rect x="0" y="0" width="1280" height="720" fill="#1a1030" opacity=".5"/>`;
+    g.innerHTML = `<rect x="-700" y="0" width="2680" height="720" fill="#1a1030" opacity=".5"/>`;
     g.addEventListener('pointerdown', e => e.stopPropagation());
     H.panel(g, 290, 90, 700, 410, { stroke: '#b06cff' });
     H.title(g, 'For grown-ups', 640, 170, 54, { seed: 2 });

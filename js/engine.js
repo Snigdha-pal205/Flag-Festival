@@ -5,6 +5,22 @@ window.FF = window.FF || {};
   const NS = 'http://www.w3.org/2000/svg';
   FF.NS = NS;
   FF.W = 1280; FF.H = 720;
+  /* Wide screens (phones are often 19.5:9 or 20:9): the game area stays 1280×720 in the
+     middle, and the picture is stretched out sideways to fill the whole screen.
+     FF.VW = full visible width in stage units, FF.OX = extra width on each side.        */
+  FF.VW = 1280; FF.OX = 0;
+  FF.onLayout = new Set();
+  FF.layout = function () {
+    const iw = window.innerWidth, ih = window.innerHeight;
+    const a = iw / Math.max(1, ih);
+    FF.VW = Math.max(1280, Math.round(720 * a));
+    FF.OX = (FF.VW - 1280) / 2;
+    if (FF.svg) {
+      FF.svg.setAttribute('viewBox', `${(-FF.OX).toFixed(2)} 0 ${FF.VW} 720`);
+      FF.svg.style.width = iw + 'px'; FF.svg.style.height = ih + 'px';
+    }
+    FF.onLayout.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+  };
   FF.INK = '#3B2A20';
   FF.C = FF_CONTENT;
 
@@ -222,6 +238,11 @@ window.FF = window.FF || {};
       top: FF.el('g', { id: 'L-top' }, svg)
     };
     svg.addEventListener('contextmenu', e => e.preventDefault());
+    FF.layout();
+    window.addEventListener('resize', () => FF.layout());
+    window.addEventListener('orientationchange', () => setTimeout(() => FF.layout(), 250));
+    document.addEventListener('fullscreenchange', () => FF.layout());
+    document.addEventListener('webkitfullscreenchange', () => FF.layout());
   };
 
   FF.toLocal = function (evt, node) {

@@ -286,14 +286,18 @@
     const L = FF.layers.ui;
     ui.top = FF.el('g', { class: 'topbar' }, L);
     ui.top.style.display = 'none';
-    const home = H.round(ui.top, 54, 52, 32, { color: '#5cc531', icon: 'home' });
+    // the corner buttons stay in the real screen corners, even on wide phones
+    ui.topL = FF.el('g', {}, ui.top); ui.topR = FF.el('g', {}, ui.top);
+    const pin = () => { ui.topL.setAttribute('transform', `translate(${(-FF.OX).toFixed(1)} 0)`); ui.topR.setAttribute('transform', `translate(${FF.OX.toFixed(1)} 0)`); };
+    pin(); FF.onLayout.add(pin);
+    const home = H.round(ui.topL, 54, 52, 32, { color: '#5cc531', icon: 'home' });
     FF.onTap(home, () => { FF.audio.sfx('tap'); FF.app && FF.app.home(); });
-    const sp = H.round(ui.top, 1224, 52, 32, { color: '#2f9cf0', icon: 'speaker' });
+    const sp = H.round(ui.topR, 1224, 52, 32, { color: '#2f9cf0', icon: 'speaker' });
     FF.onTap(sp, () => { FF.audio.sfx('tap'); pip.repeat(); });
     ui.makeMusic = function () {
       if (ui.musicBtn) ui.musicBtn.remove();
       const on = FF.audio.isMusicOn();
-      const m = H.round(ui.top, 1142, 52, 28, { color: on ? '#ffb21f' : '#b5aa98', icon: on ? 'music' : 'musicOff' });
+      const m = H.round(ui.topR, 1142, 52, 28, { color: on ? '#ffb21f' : '#b5aa98', icon: on ? 'music' : 'musicOff' });
       ui.musicBtn = m;
       FF.onTap(m, () => { const v = !FF.audio.isMusicOn(); FF.audio.setMusicOn(v); FF.app && FF.app.saveSetting('music', v); ui.makeMusic(); });
     };
@@ -346,15 +350,16 @@
       const ring = FF.el('path', { fill: 'none', stroke: '#ff4d6d', 'stroke-width': 18 }, g);
       const set = r => {
         const c = `M640 ${360 - r} a${r} ${r} 0 1 0 0.01 0 Z`;
-        p.setAttribute('d', `M-40 -40 H1320 V760 H-40 Z ${r > 1 ? c : ''}`);
+        p.setAttribute('d', `M-740 -40 H2020 V760 H-740 Z ${r > 1 ? c : ''}`);
         ring.setAttribute('d', r > 1 ? `M640 ${360 - r - 14} a${r + 14} ${r + 14} 0 1 0 0.01 0 Z` : '');
       };
-      set(760);
+      const R = Math.hypot(640 + FF.OX, 360) + 40;
+      set(R);
       FF.audio.sfx('whoosh');
-      FF.tween(0.38, k => set(760 * (1 - k)), FF.ease.in).then(() => {
+      FF.tween(0.38, k => set(R * (1 - k)), FF.ease.in).then(() => {
         try { middle && middle(); } catch (e) { console.error(e); }
         setTimeout(() => {
-          FF.tween(0.45, k => set(760 * k), FF.ease.out).then(() => { g.remove(); resolve(); });
+          FF.tween(0.45, k => set(R * k), FF.ease.out).then(() => { g.remove(); resolve(); });
         }, 160);
       });
     });

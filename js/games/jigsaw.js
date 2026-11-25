@@ -1,5 +1,6 @@
 /* Game 2 — Flag Jigsaw (3D): Grumble's wind tore the flag; fit the chunky glossy pieces
-   back into the wooden frame. Cut in a grid (2×1, 2×2, 3×2), never along the stripes.  */
+   back into the wooden frame. Cut in a grid (2×1, then 2×2), never along the stripes.
+   Never more than 4 pieces, and no extra pieces from other flags — it must stay easy.  */
 (function (FF) {
   'use strict';
   const T = THREE;
@@ -10,7 +11,7 @@
       FF.audio.music('calm');
       const w = this.setWorld(FF.frontWorld({ ground: { stageX: 7, stageZ: -18 } }));
       const fd = this.fd;
-      const grid = { easy: [2, 1], normal: [2, 2], hard: [3, 2] }[this.level];
+      const grid = { easy: [2, 1], normal: [2, 2], hard: [2, 2] }[this.level];   // at most 4 pieces
       const H = Math.min(3.1, 4.8 * fd.h / fd.w), W = H * fd.w / fd.h;
       const s = this.s = W / fd.w;
       const cx = -1.25, cy = -0.1;
@@ -38,7 +39,7 @@
 
       this.makeFriend(w, -5.3, -3.4, -0.4, 2.1);
       this.friend.turn(0.4);
-      FF.pip.show(1196, 706, 1.0);
+      FF.pip.show(80, 706, 0.95);   // bottom-left: his speech bubble never covers the pieces tray
 
       // a glossy board on the right where the pieces wait
       const z = 0.7;
@@ -47,10 +48,6 @@
       brd.receiveShadow = true;
 
       const list = cuts.map(c => Object.assign({}, c, { real: true }));
-      if (this.level === 'hard') {
-        const other = FF.pick(FF.C.countries.map(c => c.flag).filter(f => f !== this.flagId));
-        list.push(Object.assign({}, FF.pick(cuts), { real: false, other }));
-      }
       const order = FF.shuffle(list);
       const n = order.length, cols = n <= 2 ? 1 : 2, rows = Math.ceil(n / cols);
       const cw = (br.x - tl.x) / cols, ch = (tl.y - br.y) / rows;

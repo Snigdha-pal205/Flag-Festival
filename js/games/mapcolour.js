@@ -520,7 +520,7 @@
     /* ---------- the reward: stars (+ golden name flag and island map for 0 flips) ---------- */
     showStars(n) {
       const L = FF.el('g', { class: 'no-hit' }, this.layer.top);
-      L.insertAdjacentHTML('beforeend', `<rect x="0" y="0" width="1280" height="720" fill="#1a1030" opacity=".35"/>`);
+      L.insertAdjacentHTML('beforeend', `<rect x="-700" y="0" width="2680" height="720" fill="#1a1030" opacity=".35"/>`);
       const star = (cx, cy, r, on) => `<path d="${FF.flags.starD(cx, cy, r, -90)}" transform="translate(0 6)" fill="rgba(40,20,5,.3)"/>
         <path d="${FF.flags.starD(cx, cy, r, -90)}" fill="${on ? FF.hud.candy('#ffc21f') : '#d9d2c4'}" stroke="#5a3214" stroke-width="7" stroke-linejoin="round"/>
         ${on ? `<path d="${FF.flags.starD(cx - r * 0.12, cy - r * 0.16, r * 0.42, -90)}" fill="#fff" opacity=".45"/>` : ''}`;

@@ -60,6 +60,11 @@
         const g = F3.flags.partMesh(fd, P.part);
         w.scene.add(g);
         const b = F3.flags.box(P.part.shape);
+        // an invisible grab area over the whole piece: hollow shapes (the crescent!) and thin
+        // pieces can be picked up by tapping anywhere on or inside them
+        const pad = Math.max(b.w, b.h) * 0.12;
+        const hit = new T.Mesh(new T.PlaneGeometry(b.w + pad, b.h + pad), F3.ownMat(new T.MeshBasicMaterial({ visible: false })));
+        hit.position.z = 2; g.add(hit);
         let hs = Math.min(slotW * 0.8 / b.w, rowH * 0.85 / b.h, s);
         if (Math.max(b.w, b.h) * hs < 0.7) hs = Math.min(s * 1.25, 0.7 / Math.max(b.w, b.h));
         const midX = (tl.x + br.x) / 2;

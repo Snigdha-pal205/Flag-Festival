@@ -29,15 +29,18 @@
     const hd = new T.DirectionalLight(0xffffff, 1.9); hd.position.set(300, 600, 900); F3.hud.add(hd);
     F3.hudUpdaters = new Set();
     resize();
-    window.addEventListener('resize', resize);
+    FF.onLayout.add(resize);
     FF.addTick((dt, t) => F3.frame(dt, t));
   };
+  /* the canvas fills the screen: same height as the 1280×720 stage, wider on wide phones */
   function resize() {
-    const s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
-    const w = Math.round(1280 * s), h = Math.round(720 * s);
+    const s = Math.min(window.innerWidth / FF.VW, window.innerHeight / 720);
+    const w = Math.round(FF.VW * s), h = Math.round(720 * s);
     F3.r.setSize(w, h, false);
     const c = F3.r.domElement;
     c.style.width = w + 'px'; c.style.height = h + 'px';
+    F3.hudCam.left = -FF.OX; F3.hudCam.right = 1280 + FF.OX; F3.hudCam.updateProjectionMatrix();
+    if (F3.active) F3.active.fit();
   }
   F3.frame = function (dt, t) {
     const r = F3.r;
@@ -146,15 +149,51 @@
     return t;
   };
   /* a painted background picture (cached) */
-  const bgCache = {};
-  F3.bgTex = function (name) {
-    if (!bgCache[name]) {
-      const t = new T.TextureLoader().load('assets/bg/' + name);
-      t.colorSpace = T.SRGBColorSpace; t.userData.keep = true;
-      bgCache[name] = t;
-    }
-    return bgCache[name];
+  /* On a wide screen the picture keeps its exact place in the middle (so the poster's
+     PLAY button still lines up), and the sides are filled with a soft, blurred, zoomed-in
+     copy of the same picture that blends into it — no empty bars.                        */
+  const bgCache = {}, bgImgs = {};
+  function bgCompose(img, VW) {
+    const H = img.naturalHeight, IW = img.naturalWidth, W = Math.max(IW, Math.round(H * VW / 720));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    if (W <= IW + 1) { ctx.drawImage(img, 0, 0); return c; }
+    // 1) blurred, zoomed copy that covers everything
+    const k = W / IW * 1.08, bw = IW * k, bh = H * k;
+    ctx.filter = 'blur(' + Math.round(H / 40) + 'px) saturate(1.1)';
+    ctx.drawImage(img, (W - bw) / 2, (H - bh) / 2, bw, bh);
+    ctx.filter = 'none';
+    // 2) the sharp picture in the middle with feathered left/right edges
+    const sc = document.createElement('canvas'); sc.width = IW; sc.height = H;
+    const sx = sc.getContext('2d');
+    sx.drawImage(img, 0, 0);
+    const f = 0.06;
+    const g = sx.createLinearGradient(0, 0, IW, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(f, 'rgba(0,0,0,1)');
+    g.addColorStop(1 - f, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    sx.globalCompositeOperation = 'destination-in'; sx.fillStyle = g; sx.fillRect(0, 0, IW, H);
+    ctx.drawImage(sc, (W - IW) / 2, 0);
+    return c;
+  }
+  /* returns the finished texture, or null and calls ready(tex) once the picture has loaded */
+  F3.bgTex = function (name, ready) {
+    const VW = FF.VW, key = name + '@' + VW;
+    if (bgCache[key]) return bgCache[key];
+    let img = bgImgs[name];
+    if (!img) { img = bgImgs[name] = new Image(); img.src = 'assets/bg/' + name; }
+    const make = () => {
+      if (!bgCache[key]) {
+        const t = new T.CanvasTexture(bgCompose(img, VW));
+        t.colorSpace = T.SRGBColorSpace; t.userData.keep = true;
+        bgCache[key] = t;
+      }
+      return bgCache[key];
+    };
+    if (img.complete && img.naturalWidth) return make();
+    img.addEventListener('load', () => { const t = make(); if (ready) ready(t); }, { once: true });
+    return null;
   };
+  F3.preloadBg = names => names.forEach(n => F3.bgTex(n));
   F3.skyTex = function (top, bottom) {
     return F3.canvasTex(4, 256, (ctx, w, h) => {
       const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -195,15 +234,16 @@
       o = o || {};
       this.scene = new T.Scene();
       this.scene.environment = F3.env;
+      this.bgName = o.bg || null;
       if (o.bg) {
-        this.scene.background = F3.bgTex(o.bg);
+        this.setBg();
       } else this.scene.background = F3.skyTex(o.skyTop, o.skyBottom);
       if (o.shadowGround !== undefined) {
         const sg = new T.Mesh(new T.PlaneGeometry(80, 80), F3.ownMat(new T.ShadowMaterial({ opacity: 0.22 })));
         sg.rotation.x = -Math.PI / 2; sg.position.y = o.shadowGround; sg.receiveShadow = true; this.scene.add(sg);
       }
       if (o.fog !== false && !o.bg) this.scene.fog = new T.Fog(o.fogColor || 0xbfe3fb, o.fogNear || 45, o.fogFar || 130);
-      this.camera = new T.PerspectiveCamera(o.fov || 39.6, 16 / 9, 0.1, 300);
+      this.camera = new T.PerspectiveCamera(o.fov || 39.6, FF.VW / 720, 0.1, 300);
       const cp = o.cam || [0, 0, 10], lk = o.look || [0, 0, 0];
       this.camera.position.set(cp[0], cp[1], cp[2]);
       this.look = new T.Vector3(lk[0], lk[1], lk[2]);
@@ -227,10 +267,21 @@
       this.ray = new T.Raycaster();
       this.t = 0;
     }
+    /* screen shape changed: wider view (same height), background redrawn to match */
+    fit() {
+      this.camera.aspect = FF.VW / 720; this.camera.updateProjectionMatrix();
+      if (this.bgName) this.setBg();
+    }
+    setBg() {
+      const name = this.bgName, VW = FF.VW;
+      const t = F3.bgTex(name, tex => { if (this.bgName === name && FF.VW === VW) this.scene.background = tex; });
+      if (t) this.scene.background = t;
+      else if (!this.scene.background) this.scene.background = new T.Color('#8fd3ff');
+    }
     add(o) { this.scene.add(o); return o; }
     onUpdate(fn) { this.updaters.add(fn); return () => this.updaters.delete(fn); }
     update(dt, t) { this.t += dt; this.updaters.forEach(fn => fn(dt, this.t)); }
-    ndc(sx, sy) { return new T.Vector2(sx / 640 - 1, 1 - sy / 360); }
+    ndc(sx, sy) { return new T.Vector2((sx + FF.OX) / (FF.VW / 2) - 1, 1 - sy / 360); }
     rayFrom(sx, sy) { this.camera.updateMatrixWorld(true); this.ray.setFromCamera(this.ndc(sx, sy), this.camera); return this.ray; }
     pick(sx, sy, objects) {
       const hits = this.rayFrom(sx, sy).intersectObjects(objects, true);
@@ -240,7 +291,7 @@
     atZ(sx, sy, z) { const p = new T.Vector3(); this.rayFrom(sx, sy).ray.intersectPlane(new T.Plane(new T.Vector3(0, 0, 1), -(z || 0)), p); return p; }
     /* ...or on plane y = const (table scenes) */
     atY(sx, sy, y) { const p = new T.Vector3(); this.rayFrom(sx, sy).ray.intersectPlane(new T.Plane(new T.Vector3(0, 1, 0), -(y || 0)), p); return p; }
-    toStage(v) { this.camera.updateMatrixWorld(true); const p = v.clone().project(this.camera); return { x: (p.x + 1) * 640, y: (1 - p.y) * 360 }; }
+    toStage(v) { this.camera.updateMatrixWorld(true); const p = v.clone().project(this.camera); return { x: (p.x + 1) * FF.VW / 2 - FF.OX, y: (1 - p.y) * 360 }; }
     /* world units per stage pixel at depth z (front scenes) */
     pxAt(z) { const d = this.camera.position.z - (z || 0); return 2 * d * Math.tan(this.camera.fov * Math.PI / 360) / 720; }
     dispose() {
