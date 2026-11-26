@@ -42,7 +42,8 @@
       const g = FF.el('g', { transform: `translate(${gx.toFixed(1)} ${gy.toFixed(1)})` }, this.layer.top);
       if (own) {
         FF.el('path', { d: FF.hud.rr(-128 * k, -40 * k, 256 * k, 80 * k, 40 * k), fill: '#fff8ec', stroke: '#5a3214', 'stroke-width': 5 }, g);
-        FF.hud.text(g, 'Grown-ups', 0, 12 * k, 34 * k, { fill: '#5a3214' });
+        const tx = FF.el('text', { x: 0, y: 11 * k, 'text-anchor': 'middle', 'font-size': (32 * k).toFixed(1), class: 'body-font', 'font-weight': 700, fill: '#5a3214' }, g);
+        tx.textContent = 'Grown-ups';                       // plain, crisp text (like the poster's button)
       }
       FF.el('rect', { x: -130 * k, y: -42 * k, width: 260 * k, height: 84 * k, rx: 40 * k, fill: 'transparent' }, g);
       const ring = FF.el('path', { d: FF.hud.rr(-128 * k, -40 * k, 256 * k, 80 * k, 40 * k), fill: 'none', stroke: '#5cc531', 'stroke-width': 6, 'stroke-dasharray': '520', 'stroke-dashoffset': 520 }, g);
