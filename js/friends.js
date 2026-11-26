@@ -37,6 +37,8 @@
     jobs.push(load('assets/bg/name-flag.png').then(im => { Fr.imgs.nameflag = im; }));   // the glossy "?" flag cloth
     jobs.push(load('assets/bg/flag-shade.png').then(im => { Fr.imgs.flagshade = im; }));  // its folds (for real flags)
     jobs.push(load('assets/bg/flag-shine.png').then(im => { Fr.imgs.flagshine = im; }));  // its shine
+    // flags that have their own ready-made artwork (Nepal: not a rectangle, so not on the cloth)
+    Object.keys(FLAG_ART).forEach(id => jobs.push(load(FLAG_ART[id]).then(im => { Fr.imgs['art-' + id] = im; })));
     // the names on the flags use the game's title font: wait for it before drawing any
     if (document.fonts && document.fonts.load) jobs.push(document.fonts.load('40px "Lilita One"').catch(() => {}));
     Fr.ready = Promise.all(jobs);
@@ -46,12 +48,41 @@
   /* the picture of one frame: a yellow flag with the country's name on it (flagId null),
      or the real flag painted onto the cloth. Drawn at 2× so the name stays sharp. */
   const Q = 2;
+  const FLAG_ART = { nepal: 'assets/flags/nepal-cloth.png' };
   // the flag is drawn bigger than in the artwork: much wider (grows right, away from the
   // friend) and a bit taller (grows down the pole) — so it never covers the friend's face.
   // Every friend gets the same flag size for its height (some artworks have bigger flags).
   const FLAG_W = 0.57, FLAG_H = 0.36;       // flag width / height as a share of the friend's height
   const grow = m => ({ bx: FLAG_W * m.h / m.fw, by: FLAG_H * m.h / m.fh });
   const EX = 175;           // extra room on the right of every picture for the bigger flag
+  /* Where each flag's hoist edge (the side that meets the pole) is in its own picture:
+     x = h0 + hs * y (picture pixels). Measured from the pictures. */
+  const HOIST = {
+    cloth: { h0: -4.5, hs: 0.0446 },          // the glossy cloth (name flag + real flags)
+    nepal: { h0: -1.51, hs: 0.0438 }          // the artist's Nepal flag
+  };
+  /* the friend's pole, from the artwork: the left edge of the small flag in each frame,
+     as a line x = A0 + As * (y - fy) in frame pixels (poles are tilted, every frame differently) */
+  const poleCache = {};
+  function poleLine(kind, n, m, mask) {
+    const k = kind + n;
+    if (poleCache[k]) return poleCache[k];
+    const cv = document.createElement('canvas'); cv.width = mask.naturalWidth; cv.height = mask.naturalHeight;
+    const cx = cv.getContext('2d'); cx.drawImage(mask, 0, 0);
+    const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+    const ys = [], xs = [];
+    for (let y = Math.round(m.fy + m.fh * 0.12); y < Math.round(m.fy + m.fh * 0.88); y++) {
+      for (let x = Math.max(0, m.fx - 2); x < Math.min(cv.width, m.fx + m.fw); x++) { if (d[(y * cv.width + x) * 4 + 3] > 128) { ys.push(y); xs.push(x); break; } }
+    }
+    let A0 = m.fx, As = 0;
+    if (ys.length > 4) {
+      const my = ys.reduce((a, b) => a + b, 0) / ys.length, mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+      let sxy = 0, syy = 0; ys.forEach((y, i) => { sxy += (y - my) * (xs[i] - mx); syy += (y - my) * (y - my); });
+      As = syy ? sxy / syy : 0; A0 = mx + As * (m.fy - my);
+    }
+    poleCache[k] = { A0, As };
+    return poleCache[k];
+  }
   Fr.url = function (kind, n, flagId, label) {
     const key = `${kind}-${n}-${flagId || 'name:' + (label || '')}`;
     if (Fr.urls[key]) return Fr.urls[key];
@@ -62,32 +93,37 @@
     const c = document.createElement('canvas'); c.width = (m.w + EX) * Q; c.height = m.h * Q;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
-    const { bx: BX, by: BY } = grow(m);
-    // the flag hangs BEHIND the friend's own pole and hand: flag first, then the friend
-    // (with the artwork's small flag cut out) on top
-    const cw = m.fw * BX, ch = m.fh * BY, cx0 = m.fx - 3, cy0 = m.fy - 2;
-    const fd = flagId ? FF.flags.data(flagId) : null;
-    if (!fd) {
-      ctx.drawImage(cloth, cx0 * Q, cy0 * Q, cw * Q, ch * Q);           // the glossy "?" cloth
-    } else if (fd.outline) {
-      // Nepal: its own two-pennant shape (no cloth picture), hanging from the pole
-      const nh = ch * 1.25, nw = nh * fd.w / fd.h;
-      ctx.save(); ctx.translate((cx0 + 2) * Q, cy0 * Q); ctx.scale(nw * Q / fd.w, nh * Q / fd.h);
-      FF.three.flags.draw(ctx, flagId, 'full');
+    const { by: BY } = grow(m);
+    const ch = m.fh * BY, top = m.fy - 2;                     // flag height and top, in frame pixels
+    const pl = poleLine(kind, n, m, mask);
+    /* draw a flag picture so that its hoist edge runs exactly along the friend's tilted pole */
+    const place = (src, W0, H0, hz, H) => {
+      const s = H / H0, cc = s * (pl.As - hz.hs), e = pl.A0 + pl.As * (top - m.fy) - s * hz.h0 - 1;
+      ctx.save(); ctx.scale(Q, Q); ctx.transform(s, 0, cc, s, e, top);
+      ctx.drawImage(src, 0, 0, W0, H0);
       ctx.restore();
+      return (u, v) => ({ x: (s * u + cc * v + e) * Q, y: (s * v + top) * Q, s: s * Q });   // picture point → canvas
+    };
+    const fd = flagId ? FF.flags.data(flagId) : null;
+    const CW = cloth.naturalWidth, CH = cloth.naturalHeight;
+    let at = null;
+    if (!fd) {
+      at = place(cloth, CW, CH, HOIST.cloth, ch);                              // the glossy "?" cloth
+    } else if (Fr.imgs['art-' + flagId]) {
+      const art = Fr.imgs['art-' + flagId];                                    // Nepal: the artist's flag
+      place(art, art.naturalWidth, art.naturalHeight, HOIST.nepal, ch * 1.3);
     } else {
-      // every other flag: the real flag on the SAME glossy cloth as the "?" flag — same wavy
-      // shape, its folds and shadows (multiply) and its shine (white highlights)
-      const W2 = Math.round(cw * Q), H2 = Math.round(ch * Q);
-      const fc = document.createElement('canvas'); fc.width = W2; fc.height = H2;
+      // the real flag on the SAME glossy cloth: its shape, folds (multiply) and shine
+      const fc = document.createElement('canvas'); fc.width = CW; fc.height = CH;
       const fx = fc.getContext('2d');
       fx.imageSmoothingQuality = 'high';
-      fx.save(); fx.scale(W2 / fd.w, H2 / fd.h); FF.three.flags.draw(fx, flagId, 'full'); fx.restore();
-      fx.globalCompositeOperation = 'destination-in'; fx.drawImage(shade, 0, 0, W2, H2);   // the cloth's shape
-      fx.globalCompositeOperation = 'multiply'; fx.drawImage(shade, 0, 0, W2, H2);         // folds
-      fx.globalCompositeOperation = 'source-atop'; fx.drawImage(shine, 0, 0, W2, H2);      // shine
-      ctx.drawImage(fc, cx0 * Q, cy0 * Q);
+      fx.save(); fx.scale(CW / fd.w, CH / fd.h); FF.three.flags.draw(fx, flagId, 'full'); fx.restore();
+      fx.globalCompositeOperation = 'destination-in'; fx.drawImage(shade, 0, 0, CW, CH);
+      fx.globalCompositeOperation = 'multiply'; fx.drawImage(shade, 0, 0, CW, CH);
+      fx.globalCompositeOperation = 'source-atop'; fx.drawImage(shine, 0, 0, CW, CH);
+      place(fc, CW, CH, HOIST.cloth, ch);
     }
+    // the friend on top (its pole and hand in front of the flag), with the artwork's small flag cut out
     const body = document.createElement('canvas'); body.width = m.w * Q; body.height = m.h * Q;
     const bx = body.getContext('2d');
     bx.imageSmoothingQuality = 'high';
@@ -95,17 +131,17 @@
     bx.globalCompositeOperation = 'destination-out'; bx.drawImage(mask, 0, 0, body.width, body.height);
     ctx.drawImage(body, 0, 0);
     if (!fd) {
-      const text = (str, x, y, size, maxW, fill, stroke) => {
+      const text = (str, p, size, maxW, fill, stroke) => {
         ctx.font = `${size}px "Lilita One", "Fredoka", sans-serif`;
         const tw = ctx.measureText(str).width;
         if (tw > maxW) { size *= maxW / tw; ctx.font = `${size}px "Lilita One", "Fredoka", sans-serif`; }
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-        ctx.lineWidth = Math.max(3, size * 0.2); ctx.strokeStyle = stroke; ctx.strokeText(str, x, y);
-        ctx.fillStyle = fill; ctx.fillText(str, x, y);
+        ctx.lineWidth = Math.max(3, size * 0.2); ctx.strokeStyle = stroke; ctx.strokeText(str, p.x, p.y);
+        ctx.fillStyle = fill; ctx.fillText(str, p.x, p.y);
       };
-      const mx = (cx0 + cw * 0.5) * Q;
-      text('?', mx, (cy0 + ch * 0.33) * Q, ch * 0.46 * Q, cw * Q, '#ffffff', '#e2700a');          // the big "?"
-      if (label) text(label, mx, (cy0 + ch * 0.72) * Q, ch * 0.27 * Q, cw * 0.8 * Q, '#ffffff', '#7a4a10');   // the country
+      const q = at(CW * 0.48, CH * 0.36), nm = at(CW * 0.48, CH * 0.72);
+      text('?', q, CH * 0.44 * q.s, CW * q.s, '#ffffff', '#e2700a');                       // the big "?"
+      if (label) text(label, nm, CH * 0.26 * nm.s, CW * 0.78 * nm.s, '#ffffff', '#7a4a10'); // the country
     }
     Fr.urls[key] = c.toDataURL();
     return Fr.urls[key];
