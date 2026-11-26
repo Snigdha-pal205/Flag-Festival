@@ -295,17 +295,6 @@
     const unlock = () => { FF.audio.init(); window.removeEventListener('pointerdown', unlock, true); };
     window.addEventListener('pointerdown', unlock, true);
     app.fullScreen.watch();
-    // demo link: …/#demo-nepal opens the final parade with a friend holding Nepal's real flag
-    if (location.hash === '#demo-nepal') {
-      FF.useRegion('asia');
-      app.profile = app.store.profiles.kite;
-      Promise.all([FF.friends.preload(), FF.flags.preloadPictures()]).then(() => {
-        const team = FF.friends.makeTeam(['nepal', 'bhutan']);
-        team.forEach(m => { m.revealed = true; m.games = 4; });
-        FF.friends.warm(team).then(() => app.go(new FF.story.FriendParade({ final: true }), false));
-      });
-      return;
-    }
     app.go(new FF.scenes.Title(), false);
     // wait for the fonts, then redraw the title so letters are measured right
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (FF.current instanceof FF.scenes.Title) app.go(new FF.scenes.Title(), false); });
