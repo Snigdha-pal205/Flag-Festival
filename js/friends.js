@@ -27,13 +27,27 @@
 
   /* ---------- loading ---------- */
   const load = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
-  Fr.preload = function () {
+  /* load only what is needed: the shared flag pictures once, and the frames of the friends
+     who are actually playing (not all six) */
+  const kindJobs = {};
+  Fr.preload = function (kinds) {
+    const jobs = [Fr.common()];
+    (kinds || []).forEach(k => {
+      if (!kindJobs[k]) {
+        const js = [];
+        for (let n = 1; n <= 6; n++) {
+          js.push(load(DIR + `${k}-${n}.webp`).then(im => { Fr.imgs[`${k}-${n}`] = im; }));
+          js.push(load(DIR + `${k}-${n}-flag.webp`).then(im => { Fr.imgs[`${k}-${n}-flag`] = im; }));
+        }
+        kindJobs[k] = Promise.all(js);
+      }
+      jobs.push(kindJobs[k]);
+    });
+    return Promise.all(jobs);
+  };
+  Fr.common = function () {
     if (Fr.ready) return Fr.ready;
     const jobs = [];
-    Object.keys(META).forEach(k => { for (let n = 1; n <= 6; n++) {
-      jobs.push(load(DIR + `${k}-${n}.png`).then(im => { Fr.imgs[`${k}-${n}`] = im; }));
-      jobs.push(load(DIR + `${k}-${n}-flag.png`).then(im => { Fr.imgs[`${k}-${n}-flag`] = im; }));
-    } });
     jobs.push(load('assets/bg/name-flag.png').then(im => { Fr.imgs.nameflag = im; }));   // the glossy "?" flag cloth
     jobs.push(load('assets/bg/flag-shade.png').then(im => { Fr.imgs.flagshade = im; }));  // its folds (for real flags)
     jobs.push(load('assets/bg/flag-shine.png').then(im => { Fr.imgs.flagshine = im; }));  // its shine
@@ -58,8 +72,8 @@
   /* Where each flag's hoist edge (the side that meets the pole) is in its own picture:
      x = h0 + hs * y (picture pixels). Measured from the pictures. */
   const HOIST = {
-    cloth: { h0: -4.5, hs: 0.0446 },          // the glossy cloth (name flag + real flags)
-    nepal: { h0: -1.51, hs: 0.0438 }          // the artist's Nepal flag
+    cloth: { h0: -2.7, hs: 0.0446 },          // the glossy cloth (name flag + real flags), 420 px wide
+    nepal: { h0: -0.76, hs: 0.0438 }          // the artist's Nepal flag, 420 px wide
   };
   /* the friend's pole, from the artwork: the left edge of the small flag in each frame,
      as a line x = A0 + As * (y - fy) in frame pixels (poles are tilted, every frame differently) */
@@ -83,12 +97,31 @@
     poleCache[k] = { A0, As };
     return poleCache[k];
   }
+  const keyOf = (kind, n, flagId, label) => `${kind}-${n}-${flagId || 'name:' + (label || '')}`;
+  /* the picture of one frame, ready: from the cache, or drawn right now (only if it wasn't made ahead) */
   Fr.url = function (kind, n, flagId, label) {
-    const key = `${kind}-${n}-${flagId || 'name:' + (label || '')}`;
+    const key = keyOf(kind, n, flagId, label);
     if (Fr.urls[key]) return Fr.urls[key];
+    const c = compose(kind, n, flagId, label);
+    if (!c) return DIR + `${kind}-${n}.webp`;
+    Fr.urls[key] = c.toDataURL();
+    return Fr.urls[key];
+  };
+  /* make one frame's picture ahead of time, as a light WebP — without freezing the screen */
+  Fr.make = function (kind, n, flagId, label) {
+    const key = keyOf(kind, n, flagId, label);
+    if (Fr.urls[key]) return Promise.resolve();
+    const c = compose(kind, n, flagId, label);
+    if (!c) return Promise.resolve();
+    return new Promise(res => {
+      if (!c.toBlob) { Fr.urls[key] = c.toDataURL(); res(); return; }
+      c.toBlob(bl => { if (!Fr.urls[key]) Fr.urls[key] = bl ? URL.createObjectURL(bl) : c.toDataURL(); res(); }, 'image/webp', 0.92);
+    });
+  };
+  function compose(kind, n, flagId, label) {
     const base = Fr.imgs[`${kind}-${n}`], mask = Fr.imgs[`${kind}-${n}-flag`];
     const cloth = Fr.imgs.nameflag, shade = Fr.imgs.flagshade, shine = Fr.imgs.flagshine;
-    if (!base || !mask || !cloth || !shade || !shine) return DIR + `${kind}-${n}.png`;
+    if (!base || !mask || !cloth || !shade || !shine) return null;
     const m = Fr.meta(kind, n);
     const c = document.createElement('canvas'); c.width = (m.w + EX) * Q; c.height = m.h * Q;
     const ctx = c.getContext('2d');
@@ -143,9 +176,8 @@
       text('?', q, CH * 0.44 * q.s, CW * q.s, '#ffffff', '#e2700a');                       // the big "?"
       if (label) text(label, nm, CH * 0.26 * nm.s, CW * 0.78 * nm.s, '#ffffff', '#7a4a10'); // the country
     }
-    Fr.urls[key] = c.toDataURL();
-    return Fr.urls[key];
-  };
+    return c;
+  }
 
   /* ---------- the team for one PLAY: one friend per country, each carrying that country's flag ---------- */
   Fr.makeTeam = function (countryIds) {
@@ -159,14 +191,20 @@
   Fr.ctx = m => ({ friend: m.name, country: m.country.name });
   /* draw every picture the team will need (name flag + real flag, all 6 frames) ahead of time,
      a few at a time, so nothing stutters the first time a picture appears */
-  Fr.warm = function (team) {
+  Fr.warm = function (team, real) {
     const jobs = [];
-    (team || Fr.team).forEach(m => { for (let n = 1; n <= 6; n++) { jobs.push([m.kind, n, null, m.country.name]); jobs.push([m.kind, n, m.flag, m.country.name]); } });
+    (team || Fr.team).forEach(m => { for (let n = 1; n <= 6; n++) jobs.push(real ? [m.kind, n, m.flag, m.country.name] : [m.kind, n, null, m.country.name]); });
     return new Promise(done => {
-      const step = () => { const j = jobs.shift(); if (!j) { done(); return; } Fr.url(j[0], j[1], j[2], j[3]); setTimeout(step, 0); };
+      const step = () => { const j = jobs.shift(); if (!j) { done(); return; } Fr.make(j[0], j[1], j[2], j[3]).then(() => setTimeout(step, 0)); };
       step();
     });
   };
+  /* the real-flag pictures are only needed after a reveal: make them quietly while the child plays */
+  Fr.warmLater = function (team) {
+    const go = () => Fr.warm(team, true);
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 1500);
+  };
+
 
   /* ---------- an animal on screen (SVG) ----------
      o: {h (height px), x, y (feet), mood 0–4, walk (march frames), flag: flagId or null ("?")} */

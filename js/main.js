@@ -159,8 +159,6 @@
     p.lastDate = today();
     app.save();
     FF.audio.music('festival');
-    await Promise.all([FF.friends.preload(), FF.flags.preloadPictures()]);   // friends + flag artwork (Bhutan's dragon) ready first
-    if (tok !== app.token) return;
     // this time's map set: North Africa and South Asia take turns
     const region = p.lastRegion === 'africa' ? 'asia' : p.lastRegion === 'asia' ? 'africa' : FF.pick(['africa', 'asia']);
     p.lastRegion = region;
@@ -172,8 +170,12 @@
     p.recent = pickIds.slice();
     app.save();
     const team = FF.friends.makeTeam(pickIds);
-    await FF.friends.warm(team);                 // every friend picture ready BEFORE the parade starts
+    // only what this game needs: the 2 friends' pictures, the flag artwork, the "?" name flags
+    await Promise.all([FF.friends.preload(team.map(m => m.kind)), FF.flags.preloadPictures()]);
     if (tok !== app.token) return;
+    await FF.friends.warm(team);                 // the "?" name-flag pictures, ready before the parade
+    if (tok !== app.token) return;
+    FF.friends.warmLater(team);                  // the real-flag pictures: made quietly in the background
     FF.ui.buntingG.innerHTML = ''; FF.ui.slotPos = [];   // the friends strip replaces the bunting
     app.surprise.start();
 
@@ -284,9 +286,10 @@
     FF.initStage();
     FF.art.initDefs();
     FF.three.init();
-    FF.three.preloadBg(['title.jpg', 'ocean.jpg', 'festival.jpg']);
-    FF.friends.preload();
+    // the title screen first; everything else loads quietly once it is showing
+    FF.three.preloadBg(['title.jpg']);
     FF.three.chars.preload();
+    setTimeout(() => { FF.three.preloadBg(['festival.jpg', 'ocean.jpg']); FF.friends.common(); FF.flags.preloadPictures(); }, 1200);
     FF.ui.init();
     FF.pip.init();
     FF.audio.setMusicOn(app.store.settings.music !== false);

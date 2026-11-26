@@ -52,7 +52,7 @@
     if (!GR_FRAMES.length) {
       const L = new T.TextureLoader();
       for (let i = 1; i <= 16; i++) {
-        const t = L.load(`assets/chars/grumble-anim/${String(i).padStart(2, '0')}.png`);
+        const t = L.load(`assets/chars/grumble-anim/${String(i).padStart(2, '0')}.webp`);
         t.colorSpace = T.SRGBColorSpace; t.userData.keep = true; GR_FRAMES.push(t);
       }
     }

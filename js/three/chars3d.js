@@ -33,7 +33,7 @@
     }
     return texCache[name];
   };
-  CH.preload = function () { Object.keys(ART).forEach(k => CH.texture(ART[k].img)); };
+  CH.preload = function () { ['pip', 'grumble'].forEach(k => CH.texture(ART[k].img)); };   // only the characters still shown
   let blobTex = null;
   function blob() {
     if (!blobTex) {

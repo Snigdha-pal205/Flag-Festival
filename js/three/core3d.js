@@ -5,6 +5,7 @@
   'use strict';
   const T = THREE;
   const F3 = FF.three = {};
+  const touch0 = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // a phone / tablet
   F3.active = null;
 
   /* ---------- renderer ---------- */
@@ -12,13 +13,16 @@
     const canvas = document.createElement('canvas');
     canvas.id = 'gl';
     document.getElementById('wrap').insertBefore(canvas, FF.svg);
-    const r = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    // phones with very dense screens don't need edge smoothing (it costs a lot there)
+    const r = new T.WebGLRenderer({ canvas, antialias: !(touch0 && (window.devicePixelRatio || 1) >= 2), powerPreference: 'high-performance' });
+    // phones have very dense screens: 1.5× is sharp enough and far lighter to draw (less lag)
+    const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    r.setPixelRatio(Math.min(touch ? 1.5 : 2, window.devicePixelRatio || 1));
     r.outputColorSpace = T.SRGBColorSpace;
     r.toneMapping = T.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
-    r.shadowMap.type = T.PCFSoftShadowMap;
+    r.shadowMap.type = T.PCFShadowMap;            // soft enough for cartoon shadows, much cheaper than PCFSoft
     F3.r = r;
     F3.env = makeEnv(r);
     // HUD 3D scene (Pip lives here, in stage pixels)
@@ -42,7 +46,25 @@
     F3.hudCam.left = -FF.OX; F3.hudCam.right = 1280 + FF.OX; F3.hudCam.updateProjectionMatrix();
     if (F3.active) F3.active.fit();
   }
+  /* Automatic quality: if this device can't keep up (frames slower than ~45 fps for a while),
+     draw a little less sharply, then without shadows — so the game always runs smoothly. */
+  const perf = { acc: 0, n: 0, level: 0 };
+  function watchSpeed(dt) {
+    if (dt <= 0 || dt > 0.5 || document.hidden) return;        // ignore pauses / tab switches
+    perf.acc += dt; perf.n++;
+    if (perf.n < 90) return;
+    const avg = perf.acc / perf.n; perf.acc = 0; perf.n = 0;
+    if (avg > 1 / 45 && perf.level < 3) {
+      perf.level++;
+      const r = F3.r;
+      if (perf.level === 1) r.setPixelRatio(Math.max(1, r.getPixelRatio() * 0.8));
+      if (perf.level === 2) r.setPixelRatio(1);
+      if (perf.level === 3) { r.shadowMap.enabled = false; r.shadowMap.needsUpdate = true; }
+      resize();
+    }
+  }
   F3.frame = function (dt, t) {
+    watchSpeed(dt);
     const r = F3.r;
     r.autoClear = true;
     const w = F3.active;
@@ -255,7 +277,7 @@
       sun.position.set(sp[0], sp[1], sp[2]);
       sun.target.position.set(lk[0], lk[1], lk[2]);
       sun.castShadow = true;
-      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.mapSize.set(1024, 1024);       // soft cartoon shadows don't need more (much faster)
       const sc = sun.shadow.camera; const ext = o.shadowExt || 16;
       sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = 60;
       sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 4;
@@ -578,8 +600,10 @@
     const geo = new T.PlaneGeometry(0.16, 0.1);
     const g = F3.group(w.scene);
     const bits = [];
-    for (let i = 0; i < (n || 120); i++) {
+    const count = Math.round((n || 120) * (touch0 ? 0.5 : 0.75));
+    for (let i = 0; i < count; i++) {
       const m = new T.Mesh(geo, F3.toy(cols[i % cols.length], { side: T.DoubleSide }));
+      m.castShadow = false;
       m.position.set(center.x + (Math.random() - 0.5) * spread, center.y + Math.random() * 3, center.z + (Math.random() - 0.5) * 2);
       g.add(m);
       bits.push({ m, vy: -(0.8 + Math.random() * 1.2), sw: Math.random() * 6, ph: Math.random() * 6, vr: (Math.random() - 0.5) * 10 });
@@ -617,6 +641,7 @@
     const parts = [];
     for (let i = 0; i < (n || 14); i++) {
       const m = F3.S(g, 0.07 + Math.random() * 0.06, F3.toy(Array.isArray(color) ? color[i % color.length] : color), pos.x, pos.y, pos.z);
+      m.castShadow = false;
       const a = Math.random() * Math.PI * 2, e = Math.random() * 0.8 + 0.2;
       parts.push({ m, v: new T.Vector3(Math.cos(a) * e, 1 + Math.random(), Math.sin(a) * e).multiplyScalar(speed || 3) });
     }

@@ -164,7 +164,7 @@
       this.amp = o.amp || 0.07;
       this.speed = o.speed || 4;
       this.t = Math.random() * 10;
-      const segX = o.segX || 28, segY = o.segY || 10;
+      const segX = o.segX || 20, segY = o.segY || 6;     // enough to wave smoothly, light to animate
       const geo = new T.PlaneGeometry(this.W, this.H, segX, segY);
       geo.translate(this.W / 2, -this.H / 2, 0);
       this.base = geo.attributes.position.array.slice();
@@ -190,6 +190,10 @@
     setMode(mode) { this.setTex(FL.tex(this.id, mode)); }
     update(dt) {
       this.t += dt * this.speed;
+      // nothing to do for a flag that isn't waving or can't be seen
+      if (this.strength <= 0.001 && this._still) return;
+      this._still = this.strength <= 0.001;
+      if (!this.group.visible || !this.group.parent) return;
       const pos = this.cloth.geometry.attributes.position;
       const a = pos.array, b = this.base;
       const amp = this.amp * this.H * 1.4 * this.strength;
@@ -201,7 +205,9 @@
         a[i] = b[i] - Math.abs(Math.sin(ph)) * amp * 0.1 * u;
       }
       pos.needsUpdate = true;
-      this.cloth.geometry.computeVertexNormals();
+      // the light on the folds only needs refreshing every other frame (half the work)
+      this._n = (this._n || 0) + 1;
+      if (this._n % 2 === 0 || this._still) this.cloth.geometry.computeVertexNormals();
     }
   }
   FL.Flag3D = Flag3D;

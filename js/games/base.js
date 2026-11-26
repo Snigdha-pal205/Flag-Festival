@@ -80,7 +80,7 @@
     makeFriend(w, x, y, z, height, o) {
       // No animal characters are shown any more: the friend stays only as an invisible,
       // silent placeholder so the game code that moves it keeps working.
-      const f = F3.chars.forCountry(w, this.country, Object.assign({}, o, { poke: false, shadow: false }));
+      const f = F3.chars.add(w, 'pip', Object.assign({}, o, { poke: false, shadow: false }));   // invisible: no big picture to load
       f.setHeight(height || 2.2).place(x, y, z);
       f.root.visible = false;
       f.friend = null;              // no animal sounds
